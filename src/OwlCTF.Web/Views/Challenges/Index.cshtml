@@ -3,6 +3,16 @@
 @{ ViewData["Title"] = "Challenges"; }
 <main><div class="container">
   <h1 class="welcome-heading">Challenges</h1>
+  @if (Model.State.Phase == CtfPhase.Upcoming)
+  {
+    <div class="alert alert-info mt-3">
+      The event has not started yet. Challenges will open
+      @if (Model.State.StartsAtUtc is DateTime startsAt)
+      { <span>at <time data-local-time datetime="@TimeDisplay.UtcIso(startsAt)">@startsAt.ToString("yyyy-MM-dd HH:mm")</time>.</span> }
+    </div>
+  }
+  else
+  {
   @if (Model.State.Phase == CtfPhase.Unscheduled)
   { <div class="alert alert-secondary mt-3">No event is scheduled yet. You can browse the challenges but submissions will stay closed until a date is set.</div> }
   @if (User.Identity?.IsAuthenticated != true)
@@ -64,5 +74,6 @@
         </div>
       </section>
     }
+  }
   }
 </div></main>

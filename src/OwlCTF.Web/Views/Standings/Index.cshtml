@@ -12,6 +12,14 @@
 }
 <main><div class="container">
   <h1 class="welcome-heading">Standings</h1>
+  @if (Model.State.Phase == CtfPhase.Upcoming)
+  {
+    <div class="alert alert-info mt-3">
+      The event has not started yet. Standings will appear
+      @if (Model.State.StartsAtUtc is DateTime startsAt)
+      { <span>once the CTF begins at <time data-local-time datetime="@TimeDisplay.UtcIso(startsAt)">@startsAt.ToString("yyyy-MM-dd HH:mm")</time>.</span> }
+    </div>
+  }
   @if (Model.State.Phase == CtfPhase.Unscheduled)
   {
     <div class="alert alert-secondary mt-3">
@@ -21,7 +29,7 @@
       { <span>No event is scheduled yet. Previous scores are shown below for reference.</span> }
     </div>
   }
-  @if (Model.Series.Count > 0)
+  @if (Model.State.Phase != CtfPhase.Upcoming && Model.Series.Count > 0)
   {
     <section id="scoreboardChart" class="scoreboard-chart-shell mt-4" aria-labelledby="scoreboardChartTitle">
       <div class="scoreboard-chart-toolbar">
@@ -38,6 +46,8 @@
       </div>
     </section>
   }
+  @if (Model.State.Phase != CtfPhase.Upcoming)
+  {
   <div class="panel @(Model.Series.Count == 0 ? "mt-4" : "")"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
     <thead><tr><th scope="col">Rank</th><th scope="col">Team</th><th scope="col">Bracket</th><th scope="col">Score</th><th scope="col">Solves</th><th scope="col">Last solve (local time)</th></tr></thead>
     <tbody>
@@ -61,8 +71,9 @@
     }
     </tbody>
   </table></div></div>
+  }
 </div></main>
-@if (Model.Series.Count > 0)
+@if (Model.State.Phase != CtfPhase.Upcoming && Model.Series.Count > 0)
 {
   @section Scripts {
     <script src="https://cdn.jsdelivr.net/npm/echarts@5.6.0/dist/echarts.min.js"></script>

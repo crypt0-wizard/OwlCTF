@@ -34,19 +34,33 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
     [Authorize, Route("challenges/{id:guid}")]
     public async Task<IActionResult> Detail(Guid id, CancellationToken ct)
     {
+        var settings = await platform.GetAsync(ct);
+        var state = CtfState.From(settings, DateTime.UtcNow);
+        if (state.Phase == CtfPhase.Upcoming && !User.IsInRole("Admin"))
+        {
+            TempData["Error"] = "The event has not started yet. Challenges will open when the CTF begins.";
+            return RedirectToAction(nameof(Index));
+        }
+
         var team = await db.GetTeamForUserAsync(User.UserId(), ct);
         var challenge = await db.GetChallengeAsync(id, team?.Id, User.IsInRole("Admin"), ct);
         if (challenge is null) return NotFound();
-        var settings = await platform.GetAsync(ct);
         var filesTask = db.GetChallengeFilesAsync(id, ct);
         var solvesTask = db.GetChallengeSolvesAsync(id, ct);
         await Task.WhenAll(filesTask, solvesTask);
-        return View(new ChallengeDetailViewModel(challenge, await filesTask, await solvesTask, team, CtfState.From(settings, DateTime.UtcNow), FlagPrefixPolicy.Normalize(settings.FlagPrefix)));
+        return View(new ChallengeDetailViewModel(challenge, await filesTask, await solvesTask, team, state, FlagPrefixPolicy.Normalize(settings.FlagPrefix)));
     }
 
     [Authorize, HttpGet("challenges/files/{id:guid}")]
     public async Task<IActionResult> Download(Guid id, CancellationToken ct)
     {
+        var settings = await platform.GetAsync(ct);
+        if (CtfState.From(settings, DateTime.UtcNow).Phase == CtfPhase.Upcoming && !User.IsInRole("Admin"))
+        {
+            TempData["Error"] = "The event has not started yet. Challenge files will open when the CTF begins.";
+            return RedirectToAction(nameof(Index));
+        }
+
         var file = await db.GetFileAsync(id, ct);
         if (file is null) return NotFound();
         Response.Headers["X-Content-Type-Options"] = "nosniff";
