@@ -1,0 +1,152 @@
+@model SettingsInput
+@{
+  ViewData["Title"] = "Edit home page";
+  var sponsorLogos = ViewBag.SponsorLogos as IReadOnlyList<OwlCTF.Services.SponsorLogoRecord> ?? Array.Empty<OwlCTF.Services.SponsorLogoRecord>();
+}
+<main><div class="container">
+  <a asp-action="Index" class="text-decoration-none">← Administration</a>
+  <div class="d-flex flex-wrap align-items-end justify-content-between gap-3 mt-3 mb-4">
+    <div>
+      <h1 class="welcome-heading mb-1">Edit home page</h1>
+      <p class="text-body-secondary mb-0">Shape the first page players see and keep the event details current.</p>
+    </div>
+    <a class="btn btn-outline-secondary" asp-controller="Home" asp-action="Index" target="_blank" rel="noopener"><i class="fa-solid fa-arrow-up-right-from-square me-2" aria-hidden="true"></i>Preview home page</a>
+  </div>
+
+  <form asp-action="SaveHomePage" method="post">
+    <div asp-validation-summary="ModelOnly" class="alert alert-danger"></div>
+
+    <div class="panel">
+      <div class="panel-header">Platform identity</div>
+      <div class="panel-body">
+        <div class="mb-3">
+          <label asp-for="PlatformName" class="form-label">Platform name</label>
+          <input asp-for="PlatformName" class="form-control">
+          <span asp-validation-for="PlatformName" class="text-danger"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">Home page content</div>
+      <div class="panel-body">
+        <div class="mb-4">
+          <label asp-for="AboutDescription" class="form-label">About</label>
+          <div class="markdown-editor" data-markdown-editor>
+            <div class="markdown-toolbar" role="toolbar" aria-label="About formatting">
+              <button type="button" data-md="bold" title="Bold"><strong>B</strong></button><button type="button" data-md="italic" title="Italic"><em>I</em></button><button type="button" data-md="heading" title="Heading">H</button><button type="button" data-md="link" title="Link">Link</button><button type="button" data-md="bullet" title="Bulleted list">List</button><button type="button" data-md="quote" title="Quote">Quote</button><button type="button" data-md="code" title="Inline code">Code</button>
+            </div>
+            <textarea asp-for="AboutDescription" class="form-control markdown-input" rows="8" placeholder="Tell players what this event is about and who should join."></textarea>
+            <div class="markdown-preview-label">Preview</div><div class="markdown-preview markdown-content" data-md-preview></div>
+          </div>
+          <span asp-validation-for="AboutDescription" class="text-danger"></span>
+          <div class="form-text">Supports Markdown. Leave empty to show the default About message.</div>
+        </div>
+        <div class="mb-4">
+          <label asp-for="InstructionsDescription" class="form-label">Instructions</label>
+          <div class="markdown-editor" data-markdown-editor>
+            <div class="markdown-toolbar" role="toolbar" aria-label="Instructions formatting">
+              <button type="button" data-md="bold" title="Bold"><strong>B</strong></button><button type="button" data-md="italic" title="Italic"><em>I</em></button><button type="button" data-md="heading" title="Heading">H</button><button type="button" data-md="link" title="Link">Link</button><button type="button" data-md="bullet" title="Bulleted list">List</button><button type="button" data-md="quote" title="Quote">Quote</button><button type="button" data-md="code" title="Inline code">Code</button>
+            </div>
+            <textarea asp-for="InstructionsDescription" class="form-control markdown-input" rows="7" placeholder="Share the rules and anything players should know before they begin."></textarea>
+            <div class="markdown-preview-label">Preview</div><div class="markdown-preview markdown-content" data-md-preview></div>
+          </div>
+          <span asp-validation-for="InstructionsDescription" class="text-danger"></span>
+          <div class="form-text">Supports Markdown. Leave empty to hide Instructions from the home page.</div>
+        </div>
+        <div class="mb-4">
+          <label asp-for="ContactDescription" class="form-label">Contact</label>
+          <div class="markdown-editor" data-markdown-editor>
+            <div class="markdown-toolbar" role="toolbar" aria-label="Contact formatting">
+              <button type="button" data-md="bold" title="Bold"><strong>B</strong></button><button type="button" data-md="italic" title="Italic"><em>I</em></button><button type="button" data-md="heading" title="Heading">H</button><button type="button" data-md="link" title="Link">Link</button><button type="button" data-md="bullet" title="Bulleted list">List</button><button type="button" data-md="quote" title="Quote">Quote</button><button type="button" data-md="code" title="Inline code">Code</button>
+            </div>
+            <textarea asp-for="ContactDescription" class="form-control markdown-input" rows="5" placeholder="Tell players how to reach the organisers."></textarea>
+            <div class="markdown-preview-label">Preview</div><div class="markdown-preview markdown-content" data-md-preview></div>
+          </div>
+          <span asp-validation-for="ContactDescription" class="text-danger"></span>
+          <div class="form-text">Leave empty to show a short “coming soon” message.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <button class="btn btn-owlctf" type="submit"><i class="fa-solid fa-floppy-disk me-2" aria-hidden="true"></i>Save home page</button>
+      <a class="btn btn-outline-secondary" asp-action="Index">Cancel</a>
+    </div>
+  </form>
+  <div id="sponsor-logos" class="panel mt-4">
+    <div class="panel-header">Sponsor images</div>
+    <div class="panel-body">
+      <p class="text-body-secondary">Add up to three sponsor logos. Empty slots stay hidden. A transparent PNG or WebP around 600 × 240 pixels works best.</p>
+      <div class="sponsor-admin-grid">
+        @for (var slot = 1; slot <= SponsorLogoStorage.SlotCount; slot++)
+        {
+          var logo = sponsorLogos.FirstOrDefault(item => item.Slot == slot);
+          <article class="sponsor-upload-card">
+            <div class="sponsor-logo-preview">
+              @if (logo is null)
+              { <span class="text-body-secondary">Sponsor @slot</span> }
+              else
+              { <img src="@logo.PublicPath" alt="Sponsor @slot logo"> }
+            </div>
+            <form asp-action="UploadSponsorLogo" asp-route-slot="@slot" method="post" enctype="multipart/form-data">
+              <label class="form-label" for="sponsorLogo@slot">Sponsor @slot image</label>
+              <input class="form-control form-control-sm" id="sponsorLogo@slot" name="logo" type="file" accept="image/png,image/jpeg,image/webp" required>
+              <button class="btn btn-owlctf btn-sm mt-2" type="submit">@(logo is null ? "Upload" : "Replace")</button>
+            </form>
+            @if (logo is not null)
+            {
+              <form asp-action="RemoveSponsorLogo" asp-route-slot="@slot" method="post">
+                <button class="btn btn-outline-danger btn-sm" type="submit">Remove</button>
+              </form>
+            }
+          </article>
+        }
+      </div>
+    </div>
+  </div>
+</div></main>
+@section Scripts {
+<script nonce="@(Context.Items["CspNonce"] as string)">
+  document.querySelectorAll('[data-markdown-editor]').forEach(editor => {
+    const input = editor.querySelector('.markdown-input');
+    const preview = editor.querySelector('[data-md-preview]');
+    const token = document.querySelector('input[name="__RequestVerificationToken"]')?.value;
+    let previewTimer;
+
+    function replaceSelection(before, after, fallback) {
+      const start = input.selectionStart; const end = input.selectionEnd;
+      const selected = input.value.slice(start, end) || fallback;
+      input.setRangeText(before + selected + after, start, end, 'select');
+      input.focus(); input.dispatchEvent(new Event('input'));
+    }
+    function prefixLines(prefix) {
+      const start = input.selectionStart; const end = input.selectionEnd;
+      const selected = input.value.slice(start, end) || 'Item';
+      const changed = selected.split('\n').map(line => prefix + line).join('\n');
+      input.setRangeText(changed, start, end, 'select');
+      input.focus(); input.dispatchEvent(new Event('input'));
+    }
+    editor.querySelectorAll('[data-md]').forEach(button => button.addEventListener('click', () => {
+      const action = button.dataset.md;
+      if (action === 'bold') replaceSelection('**', '**', 'bold text');
+      else if (action === 'italic') replaceSelection('*', '*', 'italic text');
+      else if (action === 'heading') prefixLines('## ');
+      else if (action === 'link') replaceSelection('[', '](https://example.com)', 'link text');
+      else if (action === 'bullet') prefixLines('- ');
+      else if (action === 'quote') prefixLines('> ');
+      else if (action === 'code') replaceSelection('`', '`', 'code');
+    }));
+    async function updatePreview() {
+      const body = new URLSearchParams({ markdownText: input.value, __RequestVerificationToken: token || '' });
+      try {
+        const response = await fetch('@Url.Action("PreviewMarkdown", "Admin")', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body });
+        if (!response.ok) throw new Error();
+        preview.innerHTML = (await response.json()).html || '<p class="text-body-secondary">Nothing to preview yet.</p>';
+      } catch { preview.textContent = 'Preview is temporarily unavailable.'; }
+    }
+    input.addEventListener('input', () => { clearTimeout(previewTimer); previewTimer = setTimeout(updatePreview, 250); });
+    updatePreview();
+  });
+</script>
+}

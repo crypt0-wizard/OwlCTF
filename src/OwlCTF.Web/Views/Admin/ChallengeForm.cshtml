@@ -1,0 +1,121 @@
+@model ChallengeInput
+@using OwlCTF.Services
+@{
+  ViewData["Title"] = Model.Id is null ? "New challenge" : "Edit challenge";
+  var files = ViewBag.Files as IReadOnlyList<ChallengeFileRecord> ?? Array.Empty<ChallengeFileRecord>();
+  var cspNonce = Context.Items["CspNonce"] as string;
+}
+<main><div class="container">
+  <a asp-action="ManageChallenges" class="text-decoration-none">← Manage challenges</a>
+  <h1 class="welcome-heading">@(Model.Id is null ? "New challenge" : "Edit challenge")</h1>
+  <div class="panel mt-4 challenge-editor"><div class="panel-body p-0">
+    <form id="challengeEditorForm" asp-action="SaveChallenge" method="post" enctype="multipart/form-data">
+      <input asp-for="Id" type="hidden">
+      <div asp-validation-summary="ModelOnly" class="text-danger px-4 pt-3 mb-0"></div>
+
+      <nav class="challenge-editor-tabs" aria-label="Challenge editor sections">
+        <div class="nav nav-tabs px-3 pt-3" id="challengeEditorTabs" role="tablist">
+          <button class="nav-link active" id="basics-tab" data-bs-toggle="tab" data-bs-target="#basics-pane" type="button" role="tab" aria-controls="basics-pane" aria-selected="true">Basics</button>
+          <button class="nav-link" id="content-tab" data-bs-toggle="tab" data-bs-target="#content-pane" type="button" role="tab" aria-controls="content-pane" aria-selected="false">Content &amp; flag</button>
+          <button class="nav-link" id="docker-tab" data-bs-toggle="tab" data-bs-target="#docker-pane" type="button" role="tab" aria-controls="docker-pane" aria-selected="false">Docker instance</button>
+          <button class="nav-link" id="publishing-tab" data-bs-toggle="tab" data-bs-target="#publishing-pane" type="button" role="tab" aria-controls="publishing-pane" aria-selected="false">Files &amp; publishing</button>
+        </div>
+      </nav>
+
+      <div class="tab-content challenge-editor-content" id="challengeEditorContent">
+        <section class="tab-pane fade show active" id="basics-pane" role="tabpanel" aria-labelledby="basics-tab" tabindex="0">
+          <div class="challenge-tab-heading"><h2>Challenge basics</h2><p>Name the challenge and choose how it will be scored.</p></div>
+          <div class="row g-3">
+            <div class="col-12"><label asp-for="Title" class="form-label"></label><input asp-for="Title" class="form-control" placeholder="A short, recognizable challenge name"><span asp-validation-for="Title" class="text-danger"></span></div>
+            <div class="col-md-6"><label asp-for="Slug" class="form-label"></label><input asp-for="Slug" class="form-control" placeholder="crack-the-binary"><span asp-validation-for="Slug" class="text-danger"></span><div class="form-text">Use lowercase letters, numbers and hyphens.</div></div>
+            <div class="col-md-6"><label asp-for="Author" class="form-label"></label><input asp-for="Author" class="form-control" placeholder="Challenge author or team"><span asp-validation-for="Author" class="text-danger"></span></div>
+            <div class="col-12"><label asp-for="CategoryKey" class="form-label"></label><select asp-for="CategoryKey" class="form-select">@foreach (var category in ChallengeCategoryCatalog.All) { <option value="@category.Key">@category.Name</option> }</select><span asp-validation-for="CategoryKey" class="text-danger"></span><div class="form-text">The matching category icon is added automatically.</div></div>
+            <div class="col-12"><label asp-for="Tags" class="form-label"></label><input asp-for="Tags" class="form-control" placeholder="beginner, linux, web-101"><span asp-validation-for="Tags" class="text-danger"></span><div class="form-text">Optional. Add up to @ChallengeTagPolicy.MaximumTags comma-separated tags using lowercase letters, numbers and hyphens.</div></div>
+            <div class="col-md-4"><label asp-for="Initial" class="form-label"></label><input asp-for="Initial" class="form-control"><span asp-validation-for="Initial" class="text-danger"></span><div class="form-text">Value before any eligible solve.</div></div>
+            <div class="col-md-4"><label asp-for="Minimum" class="form-label"></label><input asp-for="Minimum" class="form-control"><span asp-validation-for="Minimum" class="text-danger"></span><div class="form-text">Lowest value after decay.</div></div>
+            <div class="col-md-4"><label asp-for="Decay" class="form-label"></label><input asp-for="Decay" class="form-control"><span asp-validation-for="Decay" class="text-danger"></span><div class="form-text">Set to 0 for static scoring.</div></div>
+          </div>
+        </section>
+
+        <section class="tab-pane fade" id="content-pane" role="tabpanel" aria-labelledby="content-tab" tabindex="0">
+          <div class="challenge-tab-heading"><h2>Content and solution flag</h2><p>Give players what they need and set the static flag.</p></div>
+          <div><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="11" placeholder="Explain the goal and include connection details or useful hints."></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
+          <div class="mt-3"><label asp-for="Flag" class="form-label"></label><input asp-for="Flag" class="form-control" autocomplete="new-password" placeholder="@(Model.Id is null ? "Required for static challenges" : "Leave blank to keep the current flag")"><span asp-validation-for="Flag" class="text-danger"></span><div class="form-text">Docker challenges receive a unique per-team flag. This field is required only for new static challenges.</div></div>
+        </section>
+
+        <section class="tab-pane fade" id="docker-pane" role="tabpanel" aria-labelledby="docker-tab" tabindex="0">
+          <div class="challenge-tab-heading"><h2>Docker instance</h2><p>Give each team its own temporary container when the challenge needs one.</p></div>
+          <div class="challenge-instance-toggle">
+            <div class="form-check form-switch m-0"><input asp-for="DynamicInstanceEnabled" class="form-check-input" role="switch"><label asp-for="DynamicInstanceEnabled" class="form-check-label fw-semibold"></label></div>
+            <span id="dockerModeStatus" class="text-body-secondary small"></span>
+          </div>
+          <div id="dockerSettings" class="mt-4" hidden="@(!Model.DynamicInstanceEnabled)">
+            <div class="alert alert-secondary py-2" role="note">The platform-wide <code>DynamicInstances</code> setting must also be enabled. Images should already be available to Docker on the server.</div>
+            <div class="row g-3">
+              <div class="col-md-8"><label asp-for="DockerImage" class="form-label"></label><input asp-for="DockerImage" class="form-control" placeholder="registry.example.org/ctf/challenge:version"><span asp-validation-for="DockerImage" class="text-danger"></span></div>
+              <div class="col-md-4"><label asp-for="ContainerPort" class="form-label"></label><input asp-for="ContainerPort" class="form-control"><span asp-validation-for="ContainerPort" class="text-danger"></span><div class="form-text">Internal TCP port exposed by the image.</div></div>
+              <div class="col-md-4"><label asp-for="InstanceTtlSeconds" class="form-label"></label><input asp-for="InstanceTtlSeconds" class="form-control"><span asp-validation-for="InstanceTtlSeconds" class="text-danger"></span></div>
+              <div class="col-md-4"><label asp-for="MaxInstanceRenewals" class="form-label"></label><input asp-for="MaxInstanceRenewals" class="form-control"><span asp-validation-for="MaxInstanceRenewals" class="text-danger"></span></div>
+              <div class="col-md-4"><label asp-for="InstanceMemoryMb" class="form-label"></label><input asp-for="InstanceMemoryMb" class="form-control"><span asp-validation-for="InstanceMemoryMb" class="text-danger"></span></div>
+              <div class="col-md-6"><label asp-for="InstanceNanoCpus" class="form-label"></label><input asp-for="InstanceNanoCpus" class="form-control"><div class="form-text">500000000 equals half a CPU core.</div><span asp-validation-for="InstanceNanoCpus" class="text-danger"></span></div>
+              <div class="col-md-6"><label asp-for="FlagEnvironmentVariable" class="form-label"></label><input asp-for="FlagEnvironmentVariable" class="form-control"><span asp-validation-for="FlagEnvironmentVariable" class="text-danger"></span><div class="form-text">The generated team flag is injected using this variable.</div></div>
+            </div>
+          </div>
+        </section>
+
+        <section class="tab-pane fade" id="publishing-pane" role="tabpanel" aria-labelledby="publishing-tab" tabindex="0">
+          <div class="challenge-tab-heading"><h2>Files and publishing</h2><p>Add any downloads and decide when the challenge goes live.</p></div>
+          <div><label asp-for="Files" class="form-label">Challenge files</label><input asp-for="Files" class="form-control" type="file" multiple><span asp-validation-for="Files" class="text-danger"></span><div class="form-text">Upload up to five files at a time.</div></div>
+          @if (files.Count > 0)
+          {
+            <div class="challenge-existing-files mt-4">
+              <h3>Existing files</h3>
+              @foreach (var file in files)
+              {
+                <div class="challenge-existing-file"><span><strong>@file.OriginalName</strong><small>@file.Sha256[..12]…</small></span><button class="btn btn-outline-danger btn-sm" type="submit" form="deleteFile-@file.Id.ToString("N")">Delete</button></div>
+              }
+            </div>
+          }
+          <div class="form-check form-switch mt-4"><input asp-for="IsVisible" class="form-check-input" role="switch"><label asp-for="IsVisible" class="form-check-label fw-semibold"></label></div>
+          <div class="form-text">Hidden challenges remain available to administrators but do not appear to players.</div>
+        </section>
+      </div>
+
+      <div class="challenge-editor-actions"><button class="btn btn-owlctf" type="submit">Save challenge</button><a class="btn btn-outline-secondary" asp-action="ManageChallenges">Cancel</a></div>
+    </form>
+  </div></div>
+
+  @foreach (var file in files)
+  {
+    <form id="deleteFile-@file.Id.ToString("N")" asp-action="DeleteFile" asp-route-id="@file.Id" method="post" class="d-none"></form>
+  }
+</div></main>
+
+@section Scripts {
+<script nonce="@cspNonce">
+  document.addEventListener('DOMContentLoaded', () => {
+    const form = document.getElementById('challengeEditorForm');
+    const dockerToggle = document.getElementById('DynamicInstanceEnabled');
+    const dockerSettings = document.getElementById('dockerSettings');
+    const dockerModeStatus = document.getElementById('dockerModeStatus');
+
+    function syncDockerSettings() {
+      const enabled = dockerToggle.checked;
+      dockerSettings.hidden = !enabled;
+      dockerModeStatus.textContent = enabled ? 'Per-team containers enabled' : 'Static challenge — no container will be started';
+    }
+    dockerToggle.addEventListener('change', syncDockerSettings);
+    syncDockerSettings();
+
+    const invalidField = form.querySelector('.field-validation-error');
+    if (invalidField) {
+      const pane = invalidField.closest('.tab-pane');
+      const trigger = pane ? document.querySelector('[data-bs-target="#' + pane.id + '"]') : null;
+      if (trigger) {
+        trigger.classList.add('has-errors');
+        bootstrap.Tab.getOrCreateInstance(trigger).show();
+      }
+    }
+  });
+</script>
+}

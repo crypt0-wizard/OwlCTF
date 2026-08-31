@@ -1,0 +1,12 @@
+services:
+  web:
+    environment:
+      DynamicInstances__Enabled: ${DYNAMIC_INSTANCES_ENABLED:-false}
+      DynamicInstances__DockerEndpoint: unix:///var/run/docker.sock
+      DynamicInstances__PublicHost: ${INSTANCE_PUBLIC_HOST:-${CTF_HOST}}
+      DynamicInstances__GlobalConcurrencyLimit: ${INSTANCE_CONCURRENCY_LIMIT:-20}
+      DynamicInstances__AutoBanOnCheat: ${AUTO_BAN_ON_CHEAT:-false}
+    volumes:
+      - ${DOCKER_SOCKET:-/var/run/docker.sock}:/var/run/docker.sock
+    group_add:
+      - ${DOCKER_GID:?Set DOCKER_GID to the Docker socket group ID}
