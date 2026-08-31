@@ -1,0 +1,11 @@
+**/bin/
+**/obj/
+.artifacts/
+.env
+*.user
+
+# Local configuration and runtime state
+**/appsettings.Local.json
+**/appsettings.Production.json
+**/App_Data/
+**/wwwroot/uploads/

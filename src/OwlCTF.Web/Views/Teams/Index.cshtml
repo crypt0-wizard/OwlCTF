@@ -1,0 +1,102 @@
+@model TeamViewModel
+@using OwlCTF.Services
+@{
+  ViewData["Title"] = "Team";
+  var isCaptain = Model.Team?.CaptainUserId.ToString() == User.FindFirst("owlctf:user_id")?.Value;
+}
+<main><div class="container">
+  <h1 class="welcome-heading">Team</h1>
+  @if (Model.Team is not null)
+  {
+    @if (Model.Team.IsSuspended)
+    { <div class="alert alert-danger mt-4"><strong>Team suspended.</strong> Your team cannot submit flags or appear in active standings until an administrator restores it.</div> }
+    <div class="panel mt-4"><div class="panel-header">@Model.Team.Name</div><div class="panel-body">
+      <div class="profile-detail-row"><span class="text-body-secondary">Team size limit</span><span>@Model.MaxTeamMembers member@(Model.MaxTeamMembers == 1 ? "" : "s")</span></div>
+      <div class="profile-detail-row"><span class="text-body-secondary">Country</span><span>@(Model.Countries.FirstOrDefault(c => c.Code == Model.Team.CountryCode)?.Name ?? "Not selected")</span></div>
+      <div class="profile-detail-row"><span class="text-body-secondary">Bracket</span><span>@TeamBracketCatalog.Get(Model.Team.BracketKey).Name</span></div>
+      <div class="profile-detail-row"><span class="text-body-secondary">Status</span><span>@(string.IsNullOrWhiteSpace(Model.Team.Status) ? "No status" : Model.Team.Status)</span></div>
+      @if (!string.IsNullOrWhiteSpace(Model.JoinCode))
+      { <div class="profile-detail-row"><span class="text-body-secondary">Join code</span><code>@Model.JoinCode</code></div> }
+      @if (isCaptain)
+      {
+        <form asp-action="Settings" method="post" class="mt-4">
+          <div class="mb-3"><label class="form-label" for="CountryCode">Country</label><select class="form-select" id="CountryCode" name="CountryCode" required><option value="">Choose a country</option>@foreach (var country in Model.Countries) { if (country.Code == Model.Team.CountryCode) { <option value="@country.Code" selected>@country.Name</option> } else { <option value="@country.Code">@country.Name</option> } }</select></div>
+          <div class="mb-3"><label class="form-label" for="BracketKey">Bracket</label><select class="form-select" id="BracketKey" name="BracketKey" required>@foreach (var bracket in TeamBracketCatalog.All) { if (bracket.Key == Model.Team.BracketKey) { <option value="@bracket.Key" selected>@bracket.Name</option> } else { <option value="@bracket.Key">@bracket.Name</option> } }</select></div>
+          <div class="mb-3"><label class="form-label" for="Status">Team status</label><input class="form-control" id="Status" name="Status" value="@Model.Team.Status" maxlength="50" placeholder="Up to 50 characters"><div class="form-text">Maximum 50 characters.</div></div>
+          <button class="btn btn-owlctf" type="submit">Save team profile</button>
+        </form>
+      }
+    </div></div>
+    <div class="panel team-danger-zone">
+      <div class="panel-header">Team membership</div>
+      <div class="panel-body d-flex flex-wrap align-items-center justify-content-between gap-3">
+        @if (isCaptain)
+        {
+          <div>
+            <div class="fw-semibold">Disband this team</div>
+            <div class="text-body-secondary small">This releases every member and closes the join code. Past results stay intact.</div>
+          </div>
+          <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#disbandTeamModal">Disband team</button>
+        }
+        else
+        {
+          <div>
+            <div class="fw-semibold">Leave this team</div>
+            <div class="text-body-secondary small">Your previous solves remain credited to the team. You can create or join another team afterward.</div>
+          </div>
+          <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#leaveTeamModal">Leave team</button>
+        }
+      </div>
+    </div>
+
+    @if (isCaptain)
+    {
+      <div class="modal fade" id="disbandTeamModal" tabindex="-1" aria-labelledby="disbandTeamTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+          <div class="modal-header"><h2 class="modal-title fs-5" id="disbandTeamTitle">Disband @Model.Team.Name?</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <form asp-action="Disband" method="post">
+            <div class="modal-body">
+              <p>This immediately releases every member, revokes the join code and removes the team from active standings. This cannot be undone.</p>
+              <p class="text-body-secondary">Past solves and submission logs will stay available.</p>
+              <label class="form-label" for="confirmTeamName">Type <strong>@Model.Team.Name</strong> to confirm</label>
+              <input id="confirmTeamName" name="TeamName" class="form-control" maxlength="80" autocomplete="off" required>
+            </div>
+            <div class="modal-footer"><button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-danger" type="submit">Disband permanently</button></div>
+          </form>
+        </div></div>
+      </div>
+    }
+    else
+    {
+      <div class="modal fade" id="leaveTeamModal" tabindex="-1" aria-labelledby="leaveTeamTitle" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+          <div class="modal-header"><h2 class="modal-title fs-5" id="leaveTeamTitle">Leave @Model.Team.Name?</h2><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+          <div class="modal-body">You will lose access to this team and its join code. Your previous solves will stay with the team.</div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <form asp-action="Leave" method="post"><button class="btn btn-danger" type="submit">Leave team</button></form>
+          </div>
+        </div></div>
+      </div>
+    }
+  }
+  else
+  {
+    <div class="row g-4 mt-1">
+      <div class="col-md-6"><div class="panel"><div class="panel-header">Create a team</div><div class="panel-body">
+        <p class="text-body-secondary mt-0">Your new team starts with you as member 1 of @Model.MaxTeamMembers.</p>
+        <form asp-action="Create" method="post">
+          <div class="mb-3"><label class="form-label" for="teamName">Team name</label><input id="teamName" class="form-control" name="Name" minlength="2" maxlength="@TeamNamePolicy.MaxLength" autocomplete="organization" required><div class="form-text">Use 2–@TeamNamePolicy.MaxLength characters. Letters, numbers, spaces and common CTF punctuation are welcome.</div>@Html.ValidationMessage("Name", null, new { @class = "text-danger" })</div>
+          <div class="mb-3"><label class="form-label" for="newCountry">Country</label><select class="form-select" id="newCountry" name="CountryCode" required><option value="" selected>Choose a country</option>@foreach (var country in Model.Countries) { <option value="@country.Code">@country.Name</option> }</select>@Html.ValidationMessage("CountryCode", null, new { @class = "text-danger" })</div>
+          <div class="mb-3"><label class="form-label" for="newBracket">Bracket</label><select class="form-select" id="newBracket" name="BracketKey" required><option value="" selected>Choose a bracket</option>@foreach (var bracket in TeamBracketCatalog.All) { <option value="@bracket.Key">@bracket.Name</option> }</select>@Html.ValidationMessage("BracketKey", null, new { @class = "text-danger" })</div>
+          <div class="mb-3"><label class="form-label" for="newStatus">Team status</label><input id="newStatus" class="form-control" name="Status" maxlength="50" placeholder="Up to 50 characters"></div>
+          <button class="btn btn-owlctf" type="submit">Create team</button>
+        </form>
+      </div></div></div>
+      <div class="col-md-6"><div class="panel"><div class="panel-header">Join a team</div><div class="panel-body">
+        <p class="text-body-secondary mt-0">Each team can have up to @Model.MaxTeamMembers member@(Model.MaxTeamMembers == 1 ? "" : "s").</p>
+        <form asp-action="Join" method="post"><label class="form-label" for="joinCode">Join code</label><input id="joinCode" class="form-control text-uppercase" name="JoinCode" maxlength="32" autocomplete="off" required><button class="btn btn-owlctf mt-3" type="submit">Join team</button></form>
+      </div></div></div>
+    </div>
+  }
+</div></main>

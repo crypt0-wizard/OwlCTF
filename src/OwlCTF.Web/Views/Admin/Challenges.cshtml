@@ -1,0 +1,101 @@
+@model AdminChallengesViewModel
+@using OwlCTF.Services
+@{ ViewData["Title"] = "Manage challenges"; }
+<main><div class="container">
+  <a asp-action="Index" class="text-decoration-none">← Administration</a>
+  <div class="mt-3">
+    <div>
+      <h1 class="welcome-heading mb-1">Manage challenges</h1>
+      <p class="text-body-secondary mb-0">Build the challenge set and choose what players can see.</p>
+    </div>
+  </div>
+  <div class="d-flex flex-nowrap align-items-end justify-content-end gap-2 mt-3 admin-challenge-toolbar">
+    <form method="get" class="d-flex flex-nowrap align-items-end gap-2 admin-team-sort admin-challenge-filters">
+        <div>
+          <label for="challengeSort" class="form-label mb-1">Sort by</label>
+          <select id="challengeSort" name="sort" class="form-select form-select-sm">
+            <option value="title" selected="@(Model.Sort == "title" ? "selected" : null)">Title</option>
+            <option value="category" selected="@(Model.Sort == "category" ? "selected" : null)">Category</option>
+            <option value="author" selected="@(Model.Sort == "author" ? "selected" : null)">Author</option>
+            <option value="points" selected="@(Model.Sort == "points" ? "selected" : null)">Current value</option>
+            <option value="solves" selected="@(Model.Sort == "solves" ? "selected" : null)">Solves</option>
+            <option value="files" selected="@(Model.Sort == "files" ? "selected" : null)">Files</option>
+            <option value="updated" selected="@(Model.Sort == "updated" ? "selected" : null)">Last updated</option>
+            <option value="created" selected="@(Model.Sort == "created" ? "selected" : null)">Created</option>
+            <option value="state" selected="@(Model.Sort == "state" ? "selected" : null)">Visibility</option>
+          </select>
+        </div>
+        <div>
+          <label for="challengeDirection" class="form-label mb-1">Direction</label>
+          <select id="challengeDirection" name="direction" class="form-select form-select-sm">
+            <option value="asc" selected="@(Model.Direction == "asc" ? "selected" : null)">Ascending</option>
+            <option value="desc" selected="@(Model.Direction == "desc" ? "selected" : null)">Descending</option>
+          </select>
+        </div>
+        <button class="btn btn-outline-primary btn-sm" type="submit">Apply</button>
+    </form>
+    <a class="btn btn-owlctf btn-sm" asp-action="NewChallenge"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i>New challenge</a>
+  </div>
+
+  <div class="row g-3 mt-2 mb-4">
+    <div class="col-sm-4"><div class="admin-stat"><span>Total challenges</span><strong>@Model.Challenges.Count</strong></div></div>
+    <div class="col-sm-4"><div class="admin-stat"><span>Published</span><strong>@Model.Challenges.Count(challenge => challenge.IsVisible)</strong></div></div>
+    <div class="col-sm-4"><div class="admin-stat"><span>Hidden</span><strong>@Model.Challenges.Count(challenge => !challenge.IsVisible)</strong></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="table-responsive">
+      <table class="table table-hover align-middle mb-0 admin-challenges-table">
+        <thead><tr><th>Challenge</th><th>Category</th><th>Author</th><th>Current value</th><th>Solves</th><th>Files</th><th>Updated (local time)</th><th>State</th><th>Manage</th></tr></thead>
+        <tbody>
+        @if (Model.Challenges.Count == 0)
+        { <tr><td colspan="9" class="text-center text-body-secondary py-5">No challenges have been created yet.</td></tr> }
+        @foreach (var challenge in Model.Challenges)
+        {
+          var category = ChallengeCategoryCatalog.Get(challenge.CategoryKey);
+          <tr class="@(!challenge.IsVisible ? "challenge-row-hidden" : "")">
+            <td><div class="fw-semibold">@challenge.Title</div><div class="small text-body-secondary mt-1"><code>@challenge.Slug</code></div></td>
+            <td><span class="category-label"><span class="category-icon-sm"><i class="@category.IconClass" aria-hidden="true"></i></span><span>@category.Name</span></span></td>
+            <td>@challenge.Author</td>
+            <td><div class="fw-semibold">@challenge.CurrentValue</div>@if (challenge.Decay > 0) { <div class="small text-body-secondary">@challenge.Initial → @challenge.Minimum</div> }</td>
+            <td>@challenge.SolveCount</td>
+            <td>@challenge.FileCount</td>
+            <td class="text-nowrap"><time data-local-time datetime="@TimeDisplay.UtcIso(challenge.UpdatedAtUtc)">@challenge.UpdatedAtUtc.ToString("yyyy-MM-dd HH:mm")</time></td>
+            <td>@if (challenge.IsVisible) { <span class="text-success fw-semibold">Published</span> } else { <span class="text-body-secondary fw-semibold">Hidden</span> }</td>
+            <td>
+              <div class="admin-challenge-management">
+                <a class="btn btn-outline-primary btn-sm" asp-action="EditChallenge" asp-route-id="@challenge.Id">Edit</a>
+                <form asp-action="SetChallengeVisibility" asp-route-id="@challenge.Id" asp-route-sort="@Model.Sort" asp-route-direction="@Model.Direction" method="post"><input type="hidden" name="visible" value="@(challenge.IsVisible ? "false" : "true")"><button class="btn btn-sm @(challenge.IsVisible ? "btn-outline-secondary" : "btn-outline-success")" type="submit">@(challenge.IsVisible ? "Hide" : "Publish")</button></form>
+                <button class="btn btn-outline-danger btn-sm" type="button" data-bs-toggle="modal" data-bs-target="#deleteChallenge-@challenge.Id.ToString("N")">Delete</button>
+              </div>
+            </td>
+          </tr>
+        }
+        </tbody>
+      </table>
+    </div>
+  </div>
+  @foreach (var challenge in Model.Challenges)
+  {
+    <div class="modal fade" id="deleteChallenge-@challenge.Id.ToString("N")" tabindex="-1" aria-labelledby="deleteChallengeTitle-@challenge.Id.ToString("N")" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 class="modal-title fs-5" id="deleteChallengeTitle-@challenge.Id.ToString("N")">Delete @challenge.Title?</h2>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>This permanently removes the challenge, its <strong>@challenge.SolveCount solves</strong>, submission attempts and <strong>@challenge.FileCount files</strong>.</p>
+            <p class="text-danger fw-semibold mb-0">This action cannot be undone.</p>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+            <form asp-action="DeleteChallenge" asp-route-id="@challenge.Id" asp-route-sort="@Model.Sort" asp-route-direction="@Model.Direction" method="post">
+              <button class="btn btn-danger" type="submit">Delete permanently</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  }
+</div></main>

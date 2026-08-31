@@ -1,0 +1,180 @@
+@inject OwlCTF.Services.PlatformService Platform
+@using System.Security.Claims
+@{
+    var site = await Platform.GetAsync(Context.RequestAborted);
+    var title = ViewData["Title"] as string;
+    var cspNonce = Context.Items["CspNonce"] as string;
+    var discordId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+    var discordUsername = User.Identity?.Name ?? "Discord user";
+    var avatarHash = User.FindFirstValue("urn:discord:avatar");
+    var useOwlCtfWordmark = string.Equals(site.PlatformName, "OwlCTF", StringComparison.OrdinalIgnoreCase);
+    var defaultAvatarIndex = ulong.TryParse(discordId, out var snowflake) ? (snowflake >> 22) % 6 : 0;
+    var discordAvatarUrl = !string.IsNullOrWhiteSpace(discordId) && !string.IsNullOrWhiteSpace(avatarHash)
+        ? $"https://cdn.discordapp.com/avatars/{discordId}/{avatarHash}.png?size=64"
+        : $"https://cdn.discordapp.com/embed/avatars/{defaultAvatarIndex}.png";
+}
+<!DOCTYPE html>
+<html lang="en" data-bs-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>@(string.IsNullOrWhiteSpace(title) ? site.PlatformName : $"{title} · {site.PlatformName}")</title>
+<link rel="icon" href="@(site.FaviconPath ?? BrandingStorage.DefaultFaviconPath)" asp-append-version="true">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/@@fortawesome/fontawesome-free@7.2.0/css/all.min.css" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/flag-icons@7.5.0/css/flag-icons.min.css" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700&display=swap" rel="stylesheet">
+<link href="~/css/site.css" rel="stylesheet" asp-append-version="true">
+</head>
+<body>
+<nav class="navbar navbar-expand-md site-navbar">
+  <div class="container">
+    <a class="navbar-brand" asp-controller="Home" asp-action="Index" aria-label="@site.PlatformName home">
+      @if (!string.IsNullOrWhiteSpace(site.NavbarLogoPath))
+      {
+        @if (site.NavbarLogoPath == BrandingStorage.AdaptiveLogoPath)
+        {
+          <span class="site-brand-lockup">
+            <span class="site-brand-mark" aria-hidden="true"></span>
+            @if (useOwlCtfWordmark)
+            { <span class="site-brand-wordmark"><span>Owl</span><span class="site-brand-wordmark-accent">CTF</span></span> }
+            else
+            { <span class="site-brand-wordmark">@site.PlatformName</span> }
+          </span>
+        }
+        else if (site.NavbarLogoPath == BrandingStorage.DefaultLogoPath)
+        {
+          <span class="site-brand-lockup">
+            <img class="site-brand-symbol" src="@BrandingStorage.DefaultLogoPath" alt="" aria-hidden="true" asp-append-version="true">
+            @if (useOwlCtfWordmark)
+            { <span class="site-brand-wordmark"><span>Owl</span><span class="site-brand-wordmark-accent">CTF</span></span> }
+            else
+            { <span class="site-brand-wordmark">@site.PlatformName</span> }
+          </span>
+        }
+        else
+        { <img class="site-logo" src="@site.NavbarLogoPath" alt="@site.PlatformName"> }
+      }
+      else
+      { <span>@site.PlatformName</span> }
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navContent" aria-controls="navContent" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="navContent">
+      <ul class="navbar-nav me-auto ms-md-4 mb-2 mb-md-0">
+        <li class="nav-item"><a class="nav-link" asp-controller="Challenges" asp-action="Index">Challenges</a></li>
+        <li class="nav-item"><a class="nav-link" asp-controller="Standings" asp-action="Index">Standings</a></li>
+        <li class="nav-item"><a class="nav-link" asp-controller="Recents" asp-action="Index">Recents</a></li>
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+          <li class="nav-item"><a class="nav-link" asp-controller="Teams" asp-action="Index">Team</a></li>
+        }
+        @if (User.IsInRole("Admin"))
+        {
+          <li class="nav-item dropdown admin-menu">
+            <button class="nav-link dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Admin</button>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" asp-controller="Admin" asp-action="ManageChallenges">Challenge management</a></li>
+              <li><a class="dropdown-item" asp-controller="Admin" asp-action="SubmissionLogs">Submission logs</a></li>
+              <li><a class="dropdown-item" asp-controller="Admin" asp-action="Index">Platform management</a></li>
+              <li><a class="dropdown-item" asp-controller="Admin" asp-action="ManageTeams">Team management</a></li>
+              <li><a class="dropdown-item" asp-controller="Admin" asp-action="ManageUsers">User management</a></li>
+            </ul>
+          </li>
+        }
+      </ul>
+      <div class="d-flex align-items-center gap-2 nav-actions">
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+          <div class="dropdown user-menu">
+            <button class="nav-link dropdown-toggle user-menu-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              <img class="discord-avatar" src="@discordAvatarUrl" alt="" width="28" height="28">
+              <span class="discord-username">@discordUsername</span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" asp-controller="Profile" asp-action="Index"><i class="bi bi-person-fill me-2"></i>Profile</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li>
+                <form asp-controller="Auth" asp-action="Logout" method="post">
+                  <button class="dropdown-item" type="submit"><i class="bi bi-box-arrow-right me-2"></i>Logout</button>
+                </form>
+              </li>
+            </ul>
+          </div>
+        }
+        else
+        {
+          <a asp-controller="Auth" asp-action="Login" class="btn btn-owlctf btn-sm"><i class="bi bi-discord me-1"></i>Login with Discord</a>
+        }
+        <button id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme"><i class="bi bi-sun-fill" id="themeIcon" aria-hidden="true"></i></button>
+      </div>
+    </div>
+  </div>
+</nav>
+@if (TempData["Message"] is string message)
+{
+  <div class="container mt-3"><div class="alert alert-success mb-0" role="status">@message</div></div>
+}
+@if (TempData["Error"] is string error)
+{
+  <div class="container mt-3"><div class="alert alert-danger mb-0" role="alert">@error</div></div>
+}
+@RenderBody()
+    <footer>
+        <div class="container">
+            @* Required OwlCTF attribution. Keep this visible and linked in hosted distributions. *@
+            Powered by <a href="https://github.com/crypt0-wizard/OwlCTF" target="_blank" rel="noopener noreferrer">OwlCTF</a>
+        </div>
+    </footer>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script nonce="@cspNonce">
+  const toggleBtn = document.getElementById('themeToggle');
+  const themeIcon = document.getElementById('themeIcon');
+  const htmlEl = document.documentElement;
+  function applyTheme(theme) {
+    htmlEl.setAttribute('data-bs-theme', theme);
+    localStorage.setItem('owlctf-theme', theme);
+    const targetTheme = theme === 'dark' ? 'light' : 'dark';
+    themeIcon.className = targetTheme === 'light' ? 'bi bi-sun-fill' : 'bi bi-moon-stars-fill';
+    const label = 'Switch to ' + targetTheme + ' theme';
+    toggleBtn.setAttribute('aria-label', label);
+    toggleBtn.setAttribute('title', label);
+  }
+  const savedTheme = localStorage.getItem('owlctf-theme') || 'dark';
+  applyTheme(savedTheme);
+  toggleBtn.addEventListener('click', () => {
+    const current = htmlEl.getAttribute('data-bs-theme');
+    applyTheme(current === 'dark' ? 'light' : 'dark');
+  });
+
+  const localDateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit'
+  });
+  window.owlctfLocalTime = {
+    format(value) {
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? '' : localDateTimeFormatter.format(date);
+    },
+    render(root = document) {
+      root.querySelectorAll('time[data-local-time]').forEach(element => {
+        const formatted = this.format(element.dateTime);
+        if (!formatted) return;
+        element.textContent = formatted;
+        element.removeAttribute('title');
+      });
+    }
+  };
+  window.owlctfLocalTime.render();
+</script>
+@await RenderSectionAsync("Scripts", required: false)
+</body>
+</html>
