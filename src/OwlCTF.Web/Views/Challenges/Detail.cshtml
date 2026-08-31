@@ -34,7 +34,7 @@
         <h2 class="h5">Files</h2>
         <div class="list-group mb-4">
         @foreach (var file in Model.Files)
-        { <a class="list-group-item list-group-item-action" asp-action="Download" asp-route-id="@file.Id"><i class="bi bi-download me-2"></i>@file.OriginalName <small class="text-body-secondary">(@(file.SizeBytes / 1024d).ToString("N1") KiB)</small></a> }
+        { <a class="list-group-item list-group-item-action" asp-action="Download" asp-route-id="@file.Id"><i class="bi bi-download me-2"></i>@file.OriginalName <small class="text-body-secondary">(@((file.SizeBytes / 1024d).ToString("N1")) KiB)</small></a> }
         </div>
       }
       @if (Model.Challenge.IsSolved)
