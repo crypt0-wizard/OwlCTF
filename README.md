@@ -19,7 +19,7 @@ OwlCTF combines challenge hosting, live competition views, team management, and 
 - Challenge, user, team, event, branding, sponsor, and submission administration
 - First-blood Discord announcements and cross-team flag detection
 - Dark and light themes with organizer-controlled branding
-- Caddy, MariaDB, and Redis production stack with horizontal web scaling
+- Caddy, MariaDB, and Redis production stack with collision-free private networking
 
 ## Quick start
 

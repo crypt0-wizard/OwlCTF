@@ -38,6 +38,34 @@ public sealed class DeploymentConfigurationTests
         Assert.Contains("http://127.0.0.1:8080/health/ready", dockerfile, StringComparison.Ordinal);
     }
 
+    [Fact]
+    public void ComposeGivesEveryBackendServiceItsOwnAddress()
+    {
+        var root = FindRepositoryRoot();
+        var compose = File.ReadAllText(Path.Combine(root, "compose.yaml"));
+        var environment = File.ReadAllLines(Path.Combine(root, ".env.example"))
+            .Where(line => !string.IsNullOrWhiteSpace(line) && !line.StartsWith('#'))
+            .Select(line => line.Split('=', 2))
+            .Where(parts => parts.Length == 2)
+            .ToDictionary(parts => parts[0], parts => parts[1], StringComparer.Ordinal);
+
+        var addressVariables = new[]
+        {
+            "CADDY_PROXY_IP",
+            "WEB_BACKEND_IP",
+            "MARIADB_BACKEND_IP",
+            "REDIS_BACKEND_IP"
+        };
+
+        foreach (var variable in addressVariables)
+        {
+            Assert.Contains($"ipv4_address: ${{{variable}", compose, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(addressVariables.Length, addressVariables.Select(name => environment[name]).Distinct().Count());
+        Assert.Contains("ReverseProxy__KnownProxy: ${CADDY_PROXY_IP", compose, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);

@@ -78,8 +78,9 @@ services:
       - app-data:/app/data
       - uploads-data:/app/wwwroot/uploads
     networks:
-      - backend
-      - egress
+      backend:
+        ipv4_address: ${WEB_BACKEND_IP:-172.30.0.3}
+      egress:
     read_only: true
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
@@ -114,7 +115,8 @@ services:
     volumes:
       - mariadb-data:/var/lib/mysql
     networks:
-      - backend
+      backend:
+        ipv4_address: ${MARIADB_BACKEND_IP:-172.30.0.4}
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=64m,mode=1777
     security_opt:
@@ -148,7 +150,8 @@ services:
     expose:
       - "6379"
     networks:
-      - backend
+      backend:
+        ipv4_address: ${REDIS_BACKEND_IP:-172.30.0.5}
     read_only: true
     tmpfs:
       - /data:rw,noexec,nosuid,size=64m,mode=1777

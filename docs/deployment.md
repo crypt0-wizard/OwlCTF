@@ -15,7 +15,7 @@ The first account to sign in becomes the initial administrator.
 
 Compose supplies database credentials Discord credentials and the flag pepper through environment variables. Base application settings do not contain fallback secrets. For a deployment outside Compose provide `ConnectionStrings__MariaDb` `Discord__ClientId` `Discord__ClientSecret` and `Security__FlagPepper` through the host environment or a secret manager.
 
-If `172.30.0.0/24` overlaps an existing network, change `BACKEND_SUBNET` and assign `CADDY_PROXY_IP` to an unused address inside the new subnet.
+Every service on the backend network has a fixed address. This prevents a service that starts early from being auto-assigned Caddy's address before Caddy starts. If `172.30.0.0/24` overlaps an existing network, change `BACKEND_SUBNET` and update `CADDY_PROXY_IP` `WEB_BACKEND_IP` `MARIADB_BACKEND_IP` and `REDIS_BACKEND_IP`. Keep all four addresses unique and inside the chosen subnet. `ReverseProxy__KnownProxy` reads `CADDY_PROXY_IP` directly, so forwarded-header trust stays aligned with Caddy.
 
 ## Start and inspect
 
@@ -42,11 +42,7 @@ docker compose up -d --no-deps caddy
 
 ## Scale the web tier
 
-```sh
-docker compose up -d --build --scale web=3
-```
-
-Caddy discovers replica addresses through Docker DNS, retries failed upstreams, and uses an affinity cookie required by SignalR. Redis acts as the SignalR backplane, so events published by one replica reach clients connected to another.
+The base stack uses one web container with a fixed backend address. Do not pass `--scale web=...` to the base Compose file because replicas cannot share that address. For multiple web replicas, create a deployment override with separately named web services and give each one a unique backend address. Caddy discovers their addresses through Docker DNS and Redis carries SignalR events between replicas.
 
 Keep the database pool budget below MariaDB's connection limit. A safe estimate is:
 
@@ -54,7 +50,7 @@ Keep the database pool budget below MariaDB's connection limit. A safe estimate 
 web replicas × WEB_DB_POOL_SIZE + 20 <= DB_MAX_CONNECTIONS
 ```
 
-The defaults support three web replicas while leaving room for administration and background work. Increase memory and MariaDB's buffer pool before increasing connection counts. On multi-host deployments, replace the local named volumes and single database/Redis services with shared storage and managed or clustered equivalents.
+The default database limits leave room for additional web services when they are defined with unique addresses. Increase memory and MariaDB's buffer pool before increasing connection counts. On multi-host deployments, replace the local named volumes and single database/Redis services with shared storage and managed or clustered equivalents.
 
 ## Resource and security defaults
 
