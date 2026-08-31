@@ -1,8 +1,0 @@
-<Solution>
-  <Folder Name="/src/">
-    <Project Path="src/OwlCTF.Web/OwlCTF.Web.csproj" />
-  </Folder>
-  <Folder Name="/tests/">
-    <Project Path="tests/OwlCTF.Tests/OwlCTF.Tests.csproj" />
-  </Folder>
-</Solution>
