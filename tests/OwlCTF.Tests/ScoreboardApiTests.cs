@@ -1,4 +1,5 @@
 using OwlCTF.Models;
+using OwlCTF.Services;
 
 namespace OwlCTF.Tests;
 
@@ -46,5 +47,42 @@ public sealed class ScoreboardApiTests
         var feed = CtftimeScoreboardResponse.From(standings);
 
         Assert.Equal(["Third", "First"], feed.Standings.Select(row => row.Team));
+    }
+
+    [Fact]
+    public void ZeroAndNegativeScoresAreExcludedAndRanksStayContiguous()
+    {
+        StandingRecord[] standings =
+        [
+            new(1, Guid.NewGuid(), "Scored", null, "open", 250, 2, null),
+            new(2, Guid.NewGuid(), "Zero", null, "open", 0, 1, null),
+            new(3, Guid.NewGuid(), "Negative", null, "open", -10, 1, null),
+            new(4, Guid.NewGuid(), "Also scored", null, "open", 100, 1, null)
+        ];
+
+        var eligible = ScoreboardRules.EligibleStandings(standings);
+        var feed = CtftimeScoreboardResponse.From(standings);
+
+        Assert.Equal(["Scored", "Also scored"], eligible.Select(row => row.TeamName));
+        Assert.Equal([1L, 2L], eligible.Select(row => row.Rank));
+        Assert.Equal(["Scored", "Also scored"], feed.Standings.Select(row => row.Team));
+        Assert.Equal([1L, 2L], feed.Standings.Select(row => row.Pos));
+    }
+
+    [Fact]
+    public void GraphExcludesTeamsWithoutAPositiveFinalScore()
+    {
+        var now = DateTime.UtcNow;
+        TeamScoreSeries[] series =
+        [
+            new(Guid.NewGuid(), "Scored", null, [new(now, 100)]),
+            new(Guid.NewGuid(), "No points", null, [new(now, 0)]),
+            new(Guid.NewGuid(), "No solves", null, [])
+        ];
+
+        var eligible = ScoreboardRules.EligibleSeries(series);
+
+        Assert.Single(eligible);
+        Assert.Equal("Scored", eligible[0].TeamName);
     }
 }

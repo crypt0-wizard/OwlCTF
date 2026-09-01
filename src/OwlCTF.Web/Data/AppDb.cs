@@ -721,10 +721,13 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         await using var db = Open();
         var rows = await db.QueryAsync<StandingRecord>(new CommandDefinition("""
             SELECT CAST(ROW_NUMBER() OVER (ORDER BY Score DESC, LastSolveAtUtc ASC, TeamName ASC) AS SIGNED) `Rank`, q.* FROM (
-              SELECT t.Id TeamId,t.Name TeamName,t.CountryCode,t.BracketKey,COALESCE(SUM(s.ValueAwarded),0) Score,COUNT(s.Id) SolveCount,MAX(s.SolvedAtUtc) LastSolveAtUtc
-              FROM Teams t LEFT JOIN Solves s ON s.TeamId=t.Id
+              SELECT t.Id TeamId,t.Name TeamName,t.CountryCode,t.BracketKey,SUM(s.ValueAwarded) Score,COUNT(s.Id) SolveCount,MAX(s.SolvedAtUtc) LastSolveAtUtc
+              FROM Teams t
+              JOIN Solves s ON s.TeamId=t.Id
+              JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
               WHERE t.IsSuspended=FALSE AND t.IsDisbanded=FALSE AND t.IsBanned=FALSE AND t.IsHidden=FALSE
               GROUP BY t.Id,t.Name,t.CountryCode,t.BracketKey
+              HAVING SUM(s.ValueAwarded)>0
             ) q ORDER BY `Rank` LIMIT 500
             """, cancellationToken: ct));
         return rows.AsList();
@@ -735,16 +738,21 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         await using var db = Open();
         var rows = await db.QueryAsync<ScoreGraphDbRow>(new CommandDefinition("""
             WITH TopTeams AS (
-              SELECT t.Id,t.Name,t.CountryCode,COALESCE(SUM(s.ValueAwarded),0) TotalScore,MAX(s.SolvedAtUtc) LastSolveAtUtc
-              FROM Teams t LEFT JOIN Solves s ON s.TeamId=t.Id
+              SELECT t.Id,t.Name,t.CountryCode,SUM(s.ValueAwarded) TotalScore,MAX(s.SolvedAtUtc) LastSolveAtUtc
+              FROM Teams t
+              JOIN Solves s ON s.TeamId=t.Id
+              JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
               WHERE t.IsSuspended=FALSE AND t.IsDisbanded=FALSE AND t.IsBanned=FALSE AND t.IsHidden=FALSE
               GROUP BY t.Id,t.Name,t.CountryCode
+              HAVING SUM(s.ValueAwarded)>0
               ORDER BY TotalScore DESC,LastSolveAtUtc ASC,t.Name ASC
               LIMIT 10
             ), Timeline AS (
               SELECT s.TeamId,s.SolvedAtUtc,
                 SUM(s.ValueAwarded) OVER (PARTITION BY s.TeamId ORDER BY s.SolvedAtUtc,s.Id ROWS UNBOUNDED PRECEDING) Score
-              FROM Solves s JOIN TopTeams top ON top.Id=s.TeamId
+              FROM Solves s
+              JOIN TopTeams top ON top.Id=s.TeamId
+              JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
             )
             SELECT top.Id TeamId,top.Name TeamName,top.CountryCode,timeline.SolvedAtUtc,timeline.Score
             FROM TopTeams top LEFT JOIN Timeline timeline ON timeline.TeamId=top.Id

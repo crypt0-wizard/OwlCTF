@@ -51,7 +51,15 @@
   <div class="panel @(Model.Series.Count == 0 ? "mt-4" : "")"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
     <thead><tr><th scope="col">Rank</th><th scope="col">Team</th><th scope="col">Bracket</th><th scope="col">Score</th><th scope="col">Solves</th><th scope="col">Last solve (local time)</th></tr></thead>
     <tbody>
-    @if (Model.Standings.Count == 0) { <tr><td colspan="6" class="text-center py-4">@(Model.State.Phase == CtfPhase.Unscheduled ? "Standings will appear after an event is scheduled." : "No teams have joined yet.")</td></tr> }
+    @if (Model.Standings.Count == 0)
+    {
+      <tr><td colspan="6" class="text-center py-4">@(Model.State.Phase switch
+      {
+        CtfPhase.Unscheduled => "Standings will appear after an event is scheduled.",
+        CtfPhase.Ended => "No teams scored in this event.",
+        _ => "No teams have scored yet."
+      })</td></tr>
+    }
     @foreach (var row in Model.Standings)
     {
       var countryName = CountryCatalog.All.FirstOrDefault(c => c.Code == row.CountryCode)?.Name;

@@ -1,11 +1,12 @@
 using System.Text.Json.Serialization;
+using OwlCTF.Services;
 
 namespace OwlCTF.Models;
 
 public sealed record CtftimeScoreboardResponse(IReadOnlyList<CtftimeStandingResponse> Standings)
 {
     public static CtftimeScoreboardResponse From(IReadOnlyList<StandingRecord> standings) =>
-        new(standings.Select(row => new CtftimeStandingResponse(
+        new(ScoreboardRules.EligibleStandings(standings).Select(row => new CtftimeStandingResponse(
             row.Rank,
             row.TeamName,
             row.Score,
