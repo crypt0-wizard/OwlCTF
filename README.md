@@ -73,3 +73,6 @@ logos are covered by the separate [trademark and brand policy](TRADEMARKS.md).
 ## Attribution
 
 Hosted copies and distributions must keep the visible “Powered by [OwlCTF](https://github.com/crypt0-wizard/OwlCTF)” footer credit. It must not be removed, hidden, or changed to point elsewhere.
+
+##Contact
+You'll have better luck catching me on Discord — you can find me there as aquinas_.
