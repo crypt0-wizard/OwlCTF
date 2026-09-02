@@ -167,6 +167,7 @@ public sealed class InstancePanelTests
         Assert.Contains("SubmissionAttemptId", migration, StringComparison.Ordinal);
         Assert.Contains("CAST(i.Id AS CHAR) CheatIncidentId", data, StringComparison.Ordinal);
         Assert.Contains("CAST(owner.Id AS CHAR) FlagOwnerTeamId", data, StringComparison.Ordinal);
+        Assert.Contains("AutoBanAppliedValue", data, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

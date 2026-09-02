@@ -456,7 +456,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               (SELECT COUNT(*) FROM Solves s WHERE s.TeamId=t.Id) SolveCount,
               t.JoinCodeProtected,t.IsSuspended,t.SuspensionReason,t.SuspendedAtUtc,
               t.IsBanned,
-              EXISTS(SELECT 1 FROM CheatIncidents incident WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE) IsAutoBanned,
+              EXISTS(SELECT 1 FROM CheatIncidents incident WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE) IsAutoBannedValue,
               t.SecurityReason,t.BannedAtUtc,t.IsDisbanded,t.DisbandedAtUtc
             FROM Teams t
             JOIN Users captain ON captain.Id=t.CaptainUserId
@@ -467,7 +467,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             team.CaptainUsername, team.MemberCount, team.Score, team.SolveCount,
             joinCodes.Unprotect(team.JoinCodeProtected) ?? "Unavailable",
             team.IsSuspended, team.SuspensionReason, Utc(team.SuspendedAtUtc),
-            team.IsBanned, team.IsAutoBanned, team.SecurityReason, Utc(team.BannedAtUtc),
+            team.IsBanned, team.IsAutoBannedValue != 0, team.SecurityReason, Utc(team.BannedAtUtc),
             team.IsDisbanded, Utc(team.DisbandedAtUtc))).ToArray();
     }
 
@@ -715,7 +715,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               a.IpAddress,a.SubmittedAtUtc,CAST(i.Id AS CHAR) CheatIncidentId,
               CAST(owner.Id AS CHAR) FlagOwnerTeamId,owner.Name FlagOwnerTeamName,
               CAST(ownerChallenge.Id AS CHAR) FlagOwnerChallengeId,ownerChallenge.Title FlagOwnerChallengeTitle,
-              COALESCE(i.AutoBanApplied,FALSE) AutoBanApplied,i.ManualBanAtUtc,
+              COALESCE(i.AutoBanApplied,FALSE) AutoBanAppliedValue,i.ManualBanAtUtc,
               t.IsBanned SubmittingTeamIsBanned
             FROM SubmissionAttempts a
             JOIN Challenges c ON c.Id=a.ChallengeId
@@ -985,7 +985,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     }
 
     private sealed record AdminTeamDbRecord(Guid Id, string Name, string? CountryCode, string? Status, string BracketKey, string? JoinCodeProtected, bool IsSuspended);
-    private sealed record AdminManagedTeamDbRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string? JoinCodeProtected, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsBanned, bool IsAutoBanned, string? SecurityReason, DateTime? BannedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
+    private sealed record AdminManagedTeamDbRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string? JoinCodeProtected, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsBanned, int IsAutoBannedValue, string? SecurityReason, DateTime? BannedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
     private sealed record TeamExitDbRecord(Guid TeamId, string TeamName, Guid CaptainUserId);
     private sealed record ChallengeScoringDbRow(int Initial, int Minimum, int Decay, int CurrentValue);
     private sealed record ChallengeLockDbRow(Guid Id);

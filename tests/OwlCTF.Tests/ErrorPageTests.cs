@@ -59,6 +59,9 @@ public sealed class ErrorPageTests
 
         Assert.Contains("Auto-banned", page, StringComparison.Ordinal);
         Assert.Contains("team.IsAutoBanned", page, StringComparison.Ordinal);
+
+        var rootData = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
+        Assert.Contains("IsAutoBannedValue", rootData, StringComparison.Ordinal);
     }
 
     private static HomeController CreateController() => new(null!, null!, null!)
