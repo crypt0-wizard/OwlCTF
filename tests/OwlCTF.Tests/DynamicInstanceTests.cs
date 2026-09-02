@@ -65,6 +65,7 @@ public sealed class FlagOwnershipTests
         public Task AddIncidentAsync(CheatIncident incident, CancellationToken ct) { Incidents.Add(incident); return Task.CompletedTask; }
         public Task MarkIncidentNotifiedAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
         public Task BanTeamAsync(Guid teamId, string reason, CancellationToken ct) { BannedTeam = teamId; return Task.CompletedTask; }
+        public Task<bool> RevokeTeamBanAsync(Guid teamId, CancellationToken ct) { BannedTeam = null; return Task.FromResult(true); }
         public Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct) { AutoBanMarked = true; return Task.CompletedTask; }
         public Task<CheatIncident?> GetIncidentAsync(Guid incidentId, CancellationToken ct) => Task.FromResult(Incidents.SingleOrDefault(incident => incident.Id == incidentId));
         public Task MarkIncidentManualBanAsync(Guid incidentId, Guid adminUserId, CancellationToken ct) => Task.CompletedTask;
@@ -168,6 +169,26 @@ public sealed class InstancePanelTests
         Assert.Contains("CAST(i.Id AS CHAR) CheatIncidentId", data, StringComparison.Ordinal);
         Assert.Contains("CAST(owner.Id AS CHAR) FlagOwnerTeamId", data, StringComparison.Ordinal);
         Assert.Contains("AutoBanAppliedValue", data, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TeamManagementCanRevokeCurrentBansWithoutDeletingIncidentHistory()
+    {
+        var root = FindRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Admin", "Teams.cshtml"));
+        var controller = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Controllers", "AdminController.cs"));
+        var store = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "EfInstanceStore.cs"));
+        var data = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
+
+        Assert.Contains("asp-action=\"RevokeTeamBan\"", page, StringComparison.Ordinal);
+        Assert.Contains("RevokeTeamBanAsync", controller, StringComparison.Ordinal);
+        Assert.Contains("x.IsBanned && !x.IsDisbanded", store, StringComparison.Ordinal);
+        Assert.DoesNotContain("db.CheatIncidents.Remove", store, StringComparison.Ordinal);
+        Assert.Contains("t.IsBanned=TRUE", data, StringComparison.Ordinal);
+        Assert.Contains("t.SecurityReason LIKE 'Automatic action", data, StringComparison.Ordinal);
+        Assert.Contains("SELECT CAST(Id AS CHAR) FROM Challenges", data, StringComparison.Ordinal);
+        Assert.Contains("CAST(t.Id AS CHAR) TeamIdValue", data, StringComparison.Ordinal);
+        Assert.DoesNotContain("QuerySingleOrDefaultAsync<Guid?>", data, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

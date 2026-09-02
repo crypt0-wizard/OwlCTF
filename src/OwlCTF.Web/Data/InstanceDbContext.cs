@@ -68,6 +68,7 @@ public sealed class TeamSecurityState
     public bool IsBanned { get; set; }
     public bool IsFlagged { get; set; }
     public bool IsHidden { get; set; }
+    public bool IsDisbanded { get; set; }
     public string? SecurityReason { get; set; }
     public DateTime? BannedAtUtc { get; set; }
     public DateTime? FlaggedAtUtc { get; set; }

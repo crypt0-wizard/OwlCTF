@@ -421,6 +421,19 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         return RedirectToAction(nameof(ManageTeams), new { sort, direction });
     }
 
+    [HttpPost("teams/{id:guid}/ban/revoke")]
+    public async Task<IActionResult> RevokeTeamBan(Guid id, string? sort, string? direction, CancellationToken ct)
+    {
+        if (!await flagOwnership.RevokeTeamBanAsync(id, ct))
+            TempData["Error"] = "Team was not found, has been disbanded or is not currently banned.";
+        else
+        {
+            scoreboard.Invalidate();
+            TempData["Message"] = "Team ban revoked. Its anti-cheat history is still available in Submission Logs.";
+        }
+        return RedirectToAction(nameof(ManageTeams), new { sort, direction });
+    }
+
     [HttpGet("challenges/new")]
     public IActionResult NewChallenge() => View("ChallengeForm", new ChallengeInput { CategoryKey = ChallengeCategoryCatalog.DefaultKey });
 

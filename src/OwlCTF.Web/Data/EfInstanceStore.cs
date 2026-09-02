@@ -109,6 +109,20 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
         foreach (var userId in memberIds) cache.Remove(TeamAccessGuardMiddleware.CacheKey(userId));
     }
 
+    public async Task<bool> RevokeTeamBanAsync(Guid teamId, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var memberIds = await db.TeamMemberships.AsNoTracking().Where(x => x.TeamId == teamId).Select(x => x.UserId).ToArrayAsync(ct);
+        var changed = await db.TeamSecurityStates
+            .Where(x => x.Id == teamId && x.IsBanned && !x.IsDisbanded)
+            .ExecuteUpdateAsync(s => s
+                .SetProperty(x => x.IsBanned, false)
+                .SetProperty(x => x.BannedAtUtc, (DateTime?)null), ct);
+        if (changed == 0) return false;
+        foreach (var userId in memberIds) cache.Remove(TeamAccessGuardMiddleware.CacheKey(userId));
+        return true;
+    }
+
     public async Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); await db.CheatIncidents.Where(x => x.Id == incidentId).ExecuteUpdateAsync(s => s.SetProperty(x => x.AutoBanApplied, true), ct); }
 

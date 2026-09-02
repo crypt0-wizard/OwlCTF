@@ -304,9 +304,9 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     public async Task<ProfileRecord?> GetProfileAsync(Guid userId, CancellationToken ct)
     {
         await using var db = Open();
-        return await db.QuerySingleOrDefaultAsync<ProfileRecord>(new CommandDefinition("""
+        var profile = await db.QuerySingleOrDefaultAsync<ProfileDbRecord>(new CommandDefinition("""
             SELECT u.Id,u.DiscordId,u.Username,u.AvatarHash,u.IsAdmin,u.CreatedAtUtc,u.LastLoginAtUtc,
-              t.Id TeamId,t.Name TeamName,COALESCE(SUM(s.ValueAwarded),0) Score,COUNT(s.Id) SolveCount
+              CAST(t.Id AS CHAR) TeamIdValue,t.Name TeamName,COALESCE(SUM(s.ValueAwarded),0) Score,COUNT(s.Id) SolveCount
             FROM Users u
             LEFT JOIN TeamMembers tm ON tm.UserId=u.Id
             LEFT JOIN Teams t ON t.Id=tm.TeamId
@@ -314,6 +314,11 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             WHERE u.Id=@userId
             GROUP BY u.Id,u.DiscordId,u.Username,u.AvatarHash,u.IsAdmin,u.CreatedAtUtc,u.LastLoginAtUtc,t.Id,t.Name
             """, new { userId }, cancellationToken: ct));
+        if (profile is null) return null;
+        Guid? teamId = Guid.TryParse(profile.TeamIdValue, out var parsedTeamId) ? parsedTeamId : null;
+        return new ProfileRecord(
+            profile.Id, profile.DiscordId, profile.Username, profile.AvatarHash, profile.IsAdmin,
+            profile.CreatedAtUtc, profile.LastLoginAtUtc, teamId, profile.TeamName, profile.Score, profile.SolveCount);
     }
 
     public async Task<TeamRecord?> GetTeamForUserAsync(Guid userId, CancellationToken ct)
@@ -456,7 +461,9 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               (SELECT COUNT(*) FROM Solves s WHERE s.TeamId=t.Id) SolveCount,
               t.JoinCodeProtected,t.IsSuspended,t.SuspensionReason,t.SuspendedAtUtc,
               t.IsBanned,
-              EXISTS(SELECT 1 FROM CheatIncidents incident WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE) IsAutoBannedValue,
+              (t.IsBanned=TRUE
+                AND t.SecurityReason LIKE 'Automatic action for cross-team instance flag incident %'
+                AND EXISTS(SELECT 1 FROM CheatIncidents incident WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE)) IsAutoBannedValue,
               t.SecurityReason,t.BannedAtUtc,t.IsDisbanded,t.DisbandedAtUtc
             FROM Teams t
             JOIN Users captain ON captain.Id=t.CaptainUserId
@@ -924,9 +931,9 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         await using var db = Open();
         await db.OpenAsync(ct);
         await using var tx = await db.BeginTransactionAsync(ct);
-        var challengeId = await db.QuerySingleOrDefaultAsync<Guid?>(new CommandDefinition(
-            "SELECT Id FROM Challenges WHERE Id=@id FOR UPDATE", new { id }, tx, cancellationToken: ct));
-        if (challengeId is null)
+        var challengeId = await db.QuerySingleOrDefaultAsync<string?>(new CommandDefinition(
+            "SELECT CAST(Id AS CHAR) FROM Challenges WHERE Id=@id FOR UPDATE", new { id }, tx, cancellationToken: ct));
+        if (!Guid.TryParse(challengeId, out _))
         {
             await tx.RollbackAsync(ct);
             return (false, Array.Empty<string>());
@@ -985,6 +992,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     }
 
     private sealed record AdminTeamDbRecord(Guid Id, string Name, string? CountryCode, string? Status, string BracketKey, string? JoinCodeProtected, bool IsSuspended);
+    private sealed record ProfileDbRecord(Guid Id, string DiscordId, string Username, string? AvatarHash, bool IsAdmin, DateTime CreatedAtUtc, DateTime LastLoginAtUtc, string? TeamIdValue, string? TeamName, decimal Score, long SolveCount);
     private sealed record AdminManagedTeamDbRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string? JoinCodeProtected, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsBanned, int IsAutoBannedValue, string? SecurityReason, DateTime? BannedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
     private sealed record TeamExitDbRecord(Guid TeamId, string TeamName, Guid CaptainUserId);
     private sealed record ChallengeScoringDbRow(int Initial, int Minimum, int Decay, int CurrentValue);

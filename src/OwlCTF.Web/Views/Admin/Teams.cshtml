@@ -97,7 +97,9 @@
               }
               else if (team.IsBanned)
               {
-                <span class="text-danger small">Access blocked</span>
+                <form asp-action="RevokeTeamBan" asp-route-id="@team.Id" asp-route-sort="@Model.Sort" asp-route-direction="@Model.Direction" method="post">
+                  <button class="btn btn-outline-success btn-sm text-nowrap" type="submit">Revoke ban</button>
+                </form>
               }
               else if (team.IsSuspended)
               {
