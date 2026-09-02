@@ -53,7 +53,7 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
         await Task.WhenAll(filesTask, solvesTask, instanceConfigTask);
         var instanceConfig = await instanceConfigTask;
         var instancePanel = instanceConfig?.Enabled == true
-            ? new ChallengeInstancePanel(instanceOptions.Value.Enabled, instanceConfig.MaxRenewals, instanceOptions.Value.RenewalSeconds)
+            ? new ChallengeInstancePanel(instanceOptions.Value.Enabled, challenge.IsSolved, instanceConfig.MaxRenewals, instanceOptions.Value.RenewalSeconds)
             : null;
         return View(new ChallengeDetailViewModel(challenge, await filesTask, await solvesTask, team, state, FlagPrefixPolicy.Normalize(settings.FlagPrefix), instancePanel));
     }
@@ -97,12 +97,14 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
             ? null
             : (remoteIp.IsIPv4MappedToIPv6 ? remoteIp.MapToIPv4() : remoteIp).ToString();
         var awarded = await db.RecordSubmissionAsync(input.ChallengeId, team.Id, User.UserId(), input.Flag, ipAddress, correct, ct);
+        var autoBanned = await ownership.ReportCrossTeamMatchAsync(ownershipResult, team.Id, User.UserId(), input.ChallengeId, ct);
         if (awarded)
         {
             scoreboard.Invalidate();
             var recent = await db.GetRecentSolveAsync(input.ChallengeId, team.Id, ct);
             if (recent is not null) await activity.Clients.All.SendAsync("SolveRecorded", recent, ct);
         }
+        if (autoBanned) return Redirect("/error/403");
         TempData[correct ? "Message" : "Error"] = correct ? (awarded ? "Correct flag. Points awarded." : "Your team already solved this challenge.") : "Incorrect flag.";
         return RedirectToAction(nameof(Detail), new { id = input.ChallengeId });
     }

@@ -22,6 +22,7 @@ public interface IInstanceStore
 {
     Task<ChallengeInstanceConfig?> GetConfigAsync(Guid challengeId, CancellationToken ct);
     Task<ChallengeInstance?> GetCurrentAsync(Guid teamId, Guid challengeId, CancellationToken ct);
+    Task<bool> HasSolvedAsync(Guid teamId, Guid challengeId, CancellationToken ct);
     Task<InstanceReservation> ReserveAsync(Guid teamId, Guid challengeId, string flagHash, DateTime now, int globalLimit, CancellationToken ct);
     Task MarkStartedAsync(Guid id, string containerId, int hostPort, CancellationToken ct);
     Task MarkFailedAsync(Guid id, string reason, CancellationToken ct);
@@ -38,7 +39,12 @@ public interface IExpiredInstanceStore
 
 public enum FlagOwnershipDisposition { NotInstanceFlag, OwnedBySubmittingTeam, WrongChallenge, OwnedByAnotherTeam }
 public sealed record IssuedFlagOwner(Guid ChallengeInstanceId, Guid ChallengeId, Guid TeamId, string FlagHash);
-public sealed record FlagOwnershipResult(FlagOwnershipDisposition Disposition, Guid? OwningTeamId = null);
+public sealed record FlagOwnershipResult(
+    FlagOwnershipDisposition Disposition,
+    Guid? OwningTeamId = null,
+    Guid? ChallengeInstanceId = null,
+    Guid? OwningChallengeId = null,
+    string? FlagHash = null);
 
 public interface IFlagOwnershipStore
 {
@@ -67,6 +73,7 @@ public sealed class InstanceLifecycleService(
     public async Task<InstanceView> StartAsync(Guid teamId, Guid challengeId, CancellationToken ct)
     {
         EnsureEnabled();
+        await EnsureNotSolvedAsync(teamId, challengeId, ct);
         var flag = GenerateFlag((await platform.GetAsync(ct)).FlagPrefix);
         var reservation = await store.ReserveAsync(teamId, challengeId, hasher.Hash(flag), clock.GetUtcNow().UtcDateTime, options.GlobalConcurrencyLimit, ct);
         try
@@ -116,6 +123,7 @@ public sealed class InstanceLifecycleService(
     public async Task<InstanceView> RenewAsync(Guid teamId, Guid challengeId, CancellationToken ct)
     {
         EnsureEnabled();
+        await EnsureNotSolvedAsync(teamId, challengeId, ct);
         var item = await store.RenewAsync(teamId, challengeId, clock.GetUtcNow().UtcDateTime, options.RenewalSeconds, options.MaximumLifetimeSeconds, ct)
             ?? throw new InstanceOperationException("No active instance was found.", 404);
         return ToView(item, item.Status, item.HostPort);
@@ -157,6 +165,12 @@ public sealed class InstanceLifecycleService(
     {
         if (!options.Enabled)
             throw new InstanceOperationException("Dynamic challenge instances are not enabled on this platform.", 503);
+    }
+
+    private async Task EnsureNotSolvedAsync(Guid teamId, Guid challengeId, CancellationToken ct)
+    {
+        if (await store.HasSolvedAsync(teamId, challengeId, ct))
+            throw new InstanceOperationException("Your team has already solved this challenge.", 409);
     }
 }
 

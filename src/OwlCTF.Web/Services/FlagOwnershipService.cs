@@ -16,20 +16,34 @@ public sealed class FlagOwnershipService(IFlagOwnershipStore store, FlagHasher h
         if (owner is null) return new(FlagOwnershipDisposition.NotInstanceFlag);
         if (owner.TeamId == submittingTeamId)
             return new(owner.ChallengeId == submittedChallengeId ? FlagOwnershipDisposition.OwnedBySubmittingTeam : FlagOwnershipDisposition.WrongChallenge, owner.TeamId);
+        return new(FlagOwnershipDisposition.OwnedByAnotherTeam, owner.TeamId, owner.ChallengeInstanceId, owner.ChallengeId, hash);
+    }
+
+    public async Task<bool> ReportCrossTeamMatchAsync(
+        FlagOwnershipResult result,
+        Guid submittingTeamId,
+        Guid submittingUserId,
+        Guid submittedChallengeId,
+        CancellationToken ct)
+    {
+        if (result.Disposition != FlagOwnershipDisposition.OwnedByAnotherTeam
+            || result.OwningTeamId is not Guid owningTeamId
+            || result.ChallengeInstanceId is not Guid challengeInstanceId
+            || result.OwningChallengeId is not Guid owningChallengeId
+            || string.IsNullOrWhiteSpace(result.FlagHash))
+            return false;
         var incident = new CheatIncident
         {
-            Id = Guid.NewGuid(), SubmittingTeamId = submittingTeamId, OwningTeamId = owner.TeamId, SubmittingUserId = submittingUserId,
-            SubmittedChallengeId = submittedChallengeId, OwningChallengeId = owner.ChallengeId, OccurredAtUtc = clock.GetUtcNow().UtcDateTime,
-            Evidence = "Submitted flag hash " + hash[..16] + "... matched instance " + owner.ChallengeInstanceId.ToString("N") + " owned by team " + owner.TeamId.ToString("N") + "."
+            Id = Guid.NewGuid(), SubmittingTeamId = submittingTeamId, OwningTeamId = owningTeamId, SubmittingUserId = submittingUserId,
+            SubmittedChallengeId = submittedChallengeId, OwningChallengeId = owningChallengeId, OccurredAtUtc = clock.GetUtcNow().UtcDateTime,
+            Evidence = "Submitted flag hash " + result.FlagHash[..16] + "... matched instance " + challengeInstanceId.ToString("N") + " owned by team " + owningTeamId.ToString("N") + "."
         };
         await store.AddIncidentAsync(incident, ct);
         if (await notifier.NotifyAsync(incident, ct)) await store.MarkIncidentNotifiedAsync(incident.Id, ct);
-        if (options.AutoBanOnCheat)
-        {
-            await store.BanTeamAsync(submittingTeamId, "Automatic action for cross-team instance flag incident " + incident.Id.ToString("N") + ".", ct);
-            await store.MarkIncidentAutoBanAsync(incident.Id, ct);
-        }
-        return new(FlagOwnershipDisposition.OwnedByAnotherTeam, owner.TeamId);
+        if (!options.AutoBanOnCheat) return false;
+        await store.BanTeamAsync(submittingTeamId, "Automatic action for cross-team instance flag incident " + incident.Id.ToString("N") + ".", ct);
+        await store.MarkIncidentAutoBanAsync(incident.Id, ct);
+        return true;
     }
 }
 

@@ -2,16 +2,20 @@ using System.Data;
 using OwlCTF.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace OwlCTF.Data;
 
-public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory) : IInstanceStore, IExpiredInstanceStore, IFlagOwnershipStore
+public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory, IMemoryCache cache) : IInstanceStore, IExpiredInstanceStore, IFlagOwnershipStore
 {
     public async Task<ChallengeInstanceConfig?> GetConfigAsync(Guid challengeId, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.InstanceConfigs.AsNoTracking().SingleOrDefaultAsync(x => x.ChallengeId == challengeId, ct); }
 
     public async Task<ChallengeInstance?> GetCurrentAsync(Guid teamId, Guid challengeId, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); return await db.Instances.AsNoTracking().Where(x => x.TeamId == teamId && x.ChallengeId == challengeId && x.ActiveLeaseKey != null).OrderByDescending(x => x.CreatedAtUtc).FirstOrDefaultAsync(ct); }
+
+    public async Task<bool> HasSolvedAsync(Guid teamId, Guid challengeId, CancellationToken ct)
+    { await using var db = await factory.CreateDbContextAsync(ct); return await db.TeamChallengeSolves.AsNoTracking().AnyAsync(x => x.TeamId == teamId && x.ChallengeId == challengeId, ct); }
 
     public async Task<InstanceReservation> ReserveAsync(Guid teamId, Guid challengeId, string flagHash, DateTime now, int globalLimit, CancellationToken ct)
     {
@@ -20,6 +24,8 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
         _ = await db.CapacityLocks.FromSqlRaw("SELECT Id FROM InstanceCapacityLocks WHERE Id=1 FOR UPDATE").SingleAsync(ct);
         var config = await db.InstanceConfigs.SingleOrDefaultAsync(x => x.ChallengeId == challengeId && x.Enabled, ct)
             ?? throw new InstanceOperationException("This challenge does not provide a dynamic instance.", 404);
+        if (await db.TeamChallengeSolves.AnyAsync(x => x.TeamId == teamId && x.ChallengeId == challengeId, ct))
+            throw new InstanceOperationException("Your team has already solved this challenge.", 409);
         if (await db.Instances.AnyAsync(x => x.TeamId == teamId && x.ChallengeId == challengeId && x.ActiveLeaseKey != null, ct))
             throw new InstanceOperationException("Your team already has an active instance for this challenge.", 409);
         var activeCount = await db.Instances.CountAsync(x => x.ActiveLeaseKey != null, ct);
@@ -57,6 +63,8 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
     public async Task<ChallengeInstance?> RenewAsync(Guid teamId, Guid challengeId, DateTime now, int renewalSeconds, int maximumLifetimeSeconds, CancellationToken ct)
     {
         await using var db = await factory.CreateDbContextAsync(ct); await using var tx = await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        if (await db.TeamChallengeSolves.AnyAsync(x => x.TeamId == teamId && x.ChallengeId == challengeId, ct))
+            throw new InstanceOperationException("Your team has already solved this challenge.", 409);
         var item = await db.Instances.FromSqlInterpolated($"SELECT * FROM ChallengeInstances WHERE TeamId={teamId} AND ChallengeId={challengeId} AND Status='Active' AND ActiveLeaseKey IS NOT NULL LIMIT 1 FOR UPDATE").SingleOrDefaultAsync(ct);
         if (item is null) { await tx.RollbackAsync(ct); return null; }
         var config = await db.InstanceConfigs.SingleAsync(x => x.ChallengeId == challengeId, ct);
@@ -90,7 +98,16 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
     { await using var db = await factory.CreateDbContextAsync(ct); await db.CheatIncidents.Where(x => x.Id == incidentId).ExecuteUpdateAsync(s => s.SetProperty(x => x.AdminNotified, true).SetProperty(x => x.AdminNotifiedAtUtc, DateTime.UtcNow), ct); }
 
     public async Task BanTeamAsync(Guid teamId, string reason, CancellationToken ct)
-    { await using var db = await factory.CreateDbContextAsync(ct); await db.TeamSecurityStates.Where(x => x.Id == teamId).ExecuteUpdateAsync(s => s.SetProperty(x => x.IsBanned, true).SetProperty(x => x.BannedAtUtc, DateTime.UtcNow).SetProperty(x => x.SecurityReason, Truncate(reason, 500)), ct); }
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        var memberIds = await db.TeamMemberships.AsNoTracking().Where(x => x.TeamId == teamId).Select(x => x.UserId).ToArrayAsync(ct);
+        var changed = await db.TeamSecurityStates.Where(x => x.Id == teamId).ExecuteUpdateAsync(
+            s => s.SetProperty(x => x.IsBanned, true)
+                .SetProperty(x => x.BannedAtUtc, DateTime.UtcNow)
+                .SetProperty(x => x.SecurityReason, Truncate(reason, 500)), ct);
+        if (changed != 1) throw new InvalidOperationException("The submitting team could not be banned.");
+        foreach (var userId in memberIds) cache.Remove(TeamAccessGuardMiddleware.CacheKey(userId));
+    }
 
     public async Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); await db.CheatIncidents.Where(x => x.Id == incidentId).ExecuteUpdateAsync(s => s.SetProperty(x => x.AutoBanApplied, true), ct); }

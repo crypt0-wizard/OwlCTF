@@ -5,7 +5,7 @@ namespace OwlCTF.Models;
 
 public sealed record HomeViewModel(PlatformSettings Settings, CtfState State, string AboutHtml, string InstructionsHtml, string ContactHtml, IReadOnlyList<SponsorLogoRecord> SponsorLogos);
 public sealed record ChallengesViewModel(IReadOnlyList<ChallengeRecord> Challenges, TeamRecord? Team, CtfState State, string Sort, IReadOnlyList<string> AvailableTags, string? SelectedTag);
-public sealed record ChallengeInstancePanel(bool PlatformEnabled, int MaxRenewals, int RenewalSeconds);
+public sealed record ChallengeInstancePanel(bool PlatformEnabled, bool ChallengeSolved, int MaxRenewals, int RenewalSeconds);
 public sealed record ChallengeDetailViewModel(ChallengeRecord Challenge, IReadOnlyList<ChallengeFileRecord> Files, IReadOnlyList<ChallengeSolveRecord> Solves, TeamRecord? Team, CtfState State, string FlagPrefix, ChallengeInstancePanel? Instance);
 public sealed record TeamViewModel(TeamRecord? Team, string? JoinCode, IReadOnlyList<OwlCTF.Services.CountryOption> Countries, int MaxTeamMembers);
 public sealed record PublicTeamViewModel(PublicTeamRecord Team, IReadOnlyList<PublicTeamMemberRecord> Members, IReadOnlyList<PublicTeamSolveRecord> Solves);

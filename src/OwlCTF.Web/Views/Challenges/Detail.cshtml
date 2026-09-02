@@ -145,6 +145,7 @@
         {
           challengeId = Model.Challenge.Id,
           platformEnabled = Model.Instance.PlatformEnabled,
+          challengeSolved = Model.Instance.ChallengeSolved,
           hasTeam = Model.Team is not null,
           teamSuspended = Model.Team?.IsSuspended == true,
           phase = Model.State.Phase.ToString(),
@@ -236,7 +237,7 @@
         function updateButtons(status) {
           const active = status === 'Active';
           const stopped = status === 'Stopped' || status === 'Expired' || status === 'Failed';
-          const canProvision = config.phase === 'Live' && !config.teamSuspended;
+          const canProvision = config.phase === 'Live' && !config.teamSuspended && !config.challengeSolved;
           const renewalLimitReached = Number(current?.renewalCount || 0) >= config.maxRenewals;
 
           actions.hidden = false;
@@ -268,6 +269,8 @@
             summary.textContent = config.teamSuspended
               ? 'Your team is suspended. You can stop this running instance.'
               : 'Your private challenge service is ready.';
+          } else if (config.challengeSolved) {
+            summary.textContent = 'Your team has solved this challenge. New instances are no longer available.';
           } else if (config.teamSuspended) {
             summary.textContent = 'Your team is suspended and cannot start an instance.';
           } else if (config.phase !== 'Live') {
@@ -292,6 +295,7 @@
           try {
             const response = await fetch('/api/instances/' + config.challengeId, {
               method: 'GET',
+              cache: 'no-store',
               credentials: 'same-origin',
               headers: { Accept: 'application/json' }
             });
@@ -315,6 +319,7 @@
           busy = true;
           panel.setAttribute('aria-busy', 'true');
           summary.textContent = progressText;
+          if (action === 'stop') setStatus('Stopping');
           showMessage('');
           updateButtons(current?.status || 'Stopped');
           try {

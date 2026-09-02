@@ -29,6 +29,8 @@ public sealed class FlagOwnershipTests
         var service = CreateService(store, flag, owner, challenge, false, notifier);
         var result = await service.CheckAsync(flag, submitter, Guid.NewGuid(), challenge, TestContext.Current.CancellationToken);
         Assert.Equal(FlagOwnershipDisposition.OwnedByAnotherTeam, result.Disposition);
+        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, Guid.NewGuid(), challenge, TestContext.Current.CancellationToken);
+        Assert.False(banned);
         Assert.Single(store.Incidents); Assert.True(notifier.Called); Assert.Null(store.BannedTeam);
         Assert.DoesNotContain(flag, store.Incidents[0].Evidence, StringComparison.Ordinal);
     }
@@ -39,7 +41,11 @@ public sealed class FlagOwnershipTests
         var owner = Guid.NewGuid(); var submitter = Guid.NewGuid(); var challenge = Guid.NewGuid(); var flag = "CTF{auto-ban-switch}";
         var store = new FakeOwnershipStore();
         var service = CreateService(store, flag, owner, challenge, true);
-        await service.CheckAsync(flag, submitter, Guid.NewGuid(), challenge, TestContext.Current.CancellationToken);
+        var user = Guid.NewGuid();
+        var result = await service.CheckAsync(flag, submitter, user, challenge, TestContext.Current.CancellationToken);
+        Assert.Null(store.BannedTeam);
+        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, user, challenge, TestContext.Current.CancellationToken);
+        Assert.True(banned);
         Assert.Equal(submitter, store.BannedTeam); Assert.True(store.AutoBanMarked);
     }
 
@@ -112,6 +118,8 @@ public sealed class InstancePanelTests
         Assert.Contains("id=\"copyInstanceConnection\"", view, StringComparison.Ordinal);
         Assert.Contains("RequestVerificationToken: antiForgeryToken", view, StringComparison.Ordinal);
         Assert.Contains("'/api/instances/' + config.challengeId", view, StringComparison.Ordinal);
+        Assert.Contains("cache: 'no-store'", view, StringComparison.Ordinal);
+        Assert.Contains("config.challengeSolved", view, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -123,6 +131,8 @@ public sealed class InstancePanelTests
         Assert.DoesNotContain("IgnoreAntiforgeryToken", controller, StringComparison.Ordinal);
         Assert.Contains("requireLiveEvent: true", controller, StringComparison.Ordinal);
         Assert.Contains("allowSuspendedTeam: true", controller, StringComparison.Ordinal);
+        Assert.Contains("challenge_already_solved", controller, StringComparison.Ordinal);
+        Assert.Contains("ResponseCache(NoStore = true", controller, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

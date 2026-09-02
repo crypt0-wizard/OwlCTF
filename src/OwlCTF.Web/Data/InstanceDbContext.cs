@@ -76,6 +76,12 @@ public sealed class TeamMembership
     public Guid TeamId { get; set; }
 }
 
+public sealed class TeamChallengeSolve
+{
+    public Guid ChallengeId { get; set; }
+    public Guid TeamId { get; set; }
+}
+
 public sealed class InstanceCapacityLock { public byte Id { get; set; } }
 
 public sealed class InstanceDbContext(DbContextOptions<InstanceDbContext> options) : DbContext(options)
@@ -86,6 +92,7 @@ public sealed class InstanceDbContext(DbContextOptions<InstanceDbContext> option
     public DbSet<CheatIncident> CheatIncidents => Set<CheatIncident>();
     public DbSet<TeamSecurityState> TeamSecurityStates => Set<TeamSecurityState>();
     public DbSet<TeamMembership> TeamMemberships => Set<TeamMembership>();
+    public DbSet<TeamChallengeSolve> TeamChallengeSolves => Set<TeamChallengeSolve>();
     public DbSet<InstanceCapacityLock> CapacityLocks => Set<InstanceCapacityLock>();
 
     protected override void OnModelCreating(ModelBuilder model)
@@ -99,6 +106,7 @@ public sealed class InstanceDbContext(DbContextOptions<InstanceDbContext> option
         model.Entity<CheatIncident>(e => { e.ToTable("CheatIncidents"); e.HasKey(x => x.Id); GuidColumns(e, nameof(CheatIncident.Id), nameof(CheatIncident.SubmittingTeamId), nameof(CheatIncident.OwningTeamId), nameof(CheatIncident.SubmittingUserId), nameof(CheatIncident.SubmittedChallengeId), nameof(CheatIncident.OwningChallengeId)); e.Property(x => x.Evidence).HasMaxLength(2_000); e.HasIndex(x => x.OccurredAtUtc); });
         model.Entity<TeamSecurityState>(e => { e.ToTable("Teams", t => t.ExcludeFromMigrations()); e.HasKey(x => x.Id); e.Property(x => x.Id).HasColumnType("char(36)"); e.Property(x => x.SecurityReason).HasMaxLength(500); });
         model.Entity<TeamMembership>(e => { e.ToTable("TeamMembers", t => t.ExcludeFromMigrations()); e.HasKey(x => x.UserId); GuidColumns(e, nameof(TeamMembership.UserId), nameof(TeamMembership.TeamId)); });
+        model.Entity<TeamChallengeSolve>(e => { e.ToTable("Solves", t => t.ExcludeFromMigrations()); e.HasKey(x => new { x.ChallengeId, x.TeamId }); GuidColumns(e, nameof(TeamChallengeSolve.ChallengeId), nameof(TeamChallengeSolve.TeamId)); });
         model.Entity<InstanceCapacityLock>(e => { e.ToTable("InstanceCapacityLocks"); e.HasKey(x => x.Id); });
     }
 
