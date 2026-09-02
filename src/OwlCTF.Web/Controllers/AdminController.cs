@@ -1,4 +1,5 @@
 using OwlCTF.Data;
+using OwlCTF.Extensions;
 using OwlCTF.Models;
 using OwlCTF.Services;
 using Microsoft.AspNetCore.Authorization;
@@ -11,7 +12,7 @@ using MySqlConnector;
 namespace OwlCTF.Controllers;
 
 [Authorize(Roles = "Admin"), Route("admin")]
-public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord) : Controller
+public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord, IFlagOwnershipStore flagOwnership) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -80,6 +81,24 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         return View("SubmissionLogs", new AdminSubmissionLogsViewModel(
             logs.Attempts, logs.Summary, selectedQuery, selectedResult, selectedDirection,
             selectedPage, pageSize, logs.MatchCount));
+    }
+
+    [HttpPost("submissions/incidents/{incidentId:guid}/ban")]
+    public async Task<IActionResult> BanTeamFromIncident(Guid incidentId, string? query, string? result, string? direction, int page = 1, CancellationToken ct = default)
+    {
+        var incident = await flagOwnership.GetIncidentAsync(incidentId, ct);
+        if (incident is null)
+            TempData["Error"] = "Anti-cheat incident was not found.";
+        else if (incident.AutoBanApplied || incident.ManualBanAtUtc is not null)
+            TempData["Message"] = "This incident has already been handled.";
+        else
+        {
+            await flagOwnership.BanTeamAsync(incident.SubmittingTeamId, "Manual ban for cross-team instance flag incident " + incident.Id.ToString("N") + ".", ct);
+            await flagOwnership.MarkIncidentManualBanAsync(incident.Id, User.UserId(), ct);
+            scoreboard.Invalidate();
+            TempData["Message"] = "Team banned and incident marked as handled.";
+        }
+        return RedirectToAction(nameof(SubmissionLogs), new { query, result, direction, page });
     }
 
     [HttpGet("home")]

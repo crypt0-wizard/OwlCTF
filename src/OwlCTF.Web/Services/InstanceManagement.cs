@@ -53,6 +53,8 @@ public interface IFlagOwnershipStore
     Task MarkIncidentNotifiedAsync(Guid incidentId, CancellationToken ct);
     Task BanTeamAsync(Guid teamId, string reason, CancellationToken ct);
     Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct);
+    Task<CheatIncident?> GetIncidentAsync(Guid incidentId, CancellationToken ct);
+    Task MarkIncidentManualBanAsync(Guid incidentId, Guid adminUserId, CancellationToken ct);
 }
 
 public interface ICheatIncidentNotifier

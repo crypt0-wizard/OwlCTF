@@ -96,16 +96,16 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
         var ipAddress = remoteIp is null
             ? null
             : (remoteIp.IsIPv4MappedToIPv6 ? remoteIp.MapToIPv4() : remoteIp).ToString();
-        var awarded = await db.RecordSubmissionAsync(input.ChallengeId, team.Id, User.UserId(), input.Flag, ipAddress, correct, ct);
-        var autoBanned = await ownership.ReportCrossTeamMatchAsync(ownershipResult, team.Id, User.UserId(), input.ChallengeId, ct);
-        if (awarded)
+        var submission = await db.RecordSubmissionAsync(input.ChallengeId, team.Id, User.UserId(), input.Flag, ipAddress, correct, ct);
+        var autoBanned = await ownership.ReportCrossTeamMatchAsync(ownershipResult, team.Id, User.UserId(), input.ChallengeId, submission.AttemptId, ct);
+        if (submission.Awarded)
         {
             scoreboard.Invalidate();
             var recent = await db.GetRecentSolveAsync(input.ChallengeId, team.Id, ct);
             if (recent is not null) await activity.Clients.All.SendAsync("SolveRecorded", recent, ct);
         }
-        if (autoBanned) return Redirect("/error/403");
-        TempData[correct ? "Message" : "Error"] = correct ? (awarded ? "Correct flag. Points awarded." : "Your team already solved this challenge.") : "Incorrect flag.";
+        if (autoBanned) return Redirect("/team/blocked");
+        TempData[correct ? "Message" : "Error"] = correct ? (submission.Awarded ? "Correct flag. Points awarded." : "Your team already solved this challenge.") : "Incorrect flag.";
         return RedirectToAction(nameof(Detail), new { id = input.ChallengeId });
     }
 }

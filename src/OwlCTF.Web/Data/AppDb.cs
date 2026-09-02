@@ -107,8 +107,11 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         CREATE TABLE IF NOT EXISTS CheatIncidents (
           Id CHAR(36) NOT NULL PRIMARY KEY, SubmittingTeamId CHAR(36) NOT NULL, OwningTeamId CHAR(36) NOT NULL,
           SubmittingUserId CHAR(36) NOT NULL, SubmittedChallengeId CHAR(36) NOT NULL, OwningChallengeId CHAR(36) NOT NULL,
+          SubmissionAttemptId BIGINT NULL,
           OccurredAtUtc DATETIME(6) NOT NULL, Evidence VARCHAR(2000) NOT NULL, AdminNotified BOOLEAN NOT NULL DEFAULT FALSE,
           AdminNotifiedAtUtc DATETIME(6) NULL, AutoBanApplied BOOLEAN NOT NULL DEFAULT FALSE,
+          ManualBanAtUtc DATETIME(6) NULL, ManualBanByUserId CHAR(36) NULL,
+          UNIQUE KEY UX_CheatIncidents_SubmissionAttempt (SubmissionAttemptId),
           INDEX IX_CheatIncidents_Time (OccurredAtUtc), INDEX IX_CheatIncidents_Submitter (SubmittingTeamId,OccurredAtUtc)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         CREATE TABLE IF NOT EXISTS FirstBloodAnnouncements (
@@ -168,6 +171,10 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         ALTER TABLE SubmissionAttempts ADD COLUMN IF NOT EXISTS SubmittedFlag VARCHAR(500) NOT NULL DEFAULT '';
         ALTER TABLE SubmissionAttempts ADD COLUMN IF NOT EXISTS IpAddress VARCHAR(45) NULL;
         ALTER TABLE SubmissionAttempts ADD INDEX IF NOT EXISTS IX_Attempts_Time (SubmittedAtUtc);
+        ALTER TABLE CheatIncidents ADD COLUMN IF NOT EXISTS SubmissionAttemptId BIGINT NULL;
+        ALTER TABLE CheatIncidents ADD COLUMN IF NOT EXISTS ManualBanAtUtc DATETIME(6) NULL;
+        ALTER TABLE CheatIncidents ADD COLUMN IF NOT EXISTS ManualBanByUserId CHAR(36) NULL;
+        ALTER TABLE CheatIncidents ADD UNIQUE INDEX IF NOT EXISTS UX_CheatIncidents_SubmissionAttempt (SubmissionAttemptId);
         ALTER TABLE FirstBloodAnnouncements ADD COLUMN IF NOT EXISTS ClaimExpiresAtUtc DATETIME(6) NULL;
         UPDATE Challenges SET CategoryKey='reverse-engineering'
         WHERE CategoryKey NOT IN ('reverse-engineering','web','cryptography','pwn','forensics','osint','steganography','mobile','hardware','blockchain','programming','miscellaneous');
@@ -580,23 +587,24 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         return await db.QuerySingleOrDefaultAsync<ChallengeSecret>(new CommandDefinition("SELECT FlagHash,CurrentValue,IsVisible FROM Challenges WHERE Id=@id", new { id }, cancellationToken: ct));
     }
 
-    public async Task<bool> RecordSubmissionAsync(Guid challengeId, Guid teamId, Guid userId, string submittedFlag, string? ipAddress, bool correct, CancellationToken ct)
+    public async Task<SubmissionRecordResult> RecordSubmissionAsync(Guid challengeId, Guid teamId, Guid userId, string submittedFlag, string? ipAddress, bool correct, CancellationToken ct)
     {
         await using var db = Open(); await db.OpenAsync(ct); await using var tx = await db.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
         await db.ExecuteAsync(new CommandDefinition("""
             INSERT INTO SubmissionAttempts (ChallengeId,TeamId,UserId,SubmittedFlag,IpAddress,IsCorrect,SubmittedAtUtc)
             VALUES (@challengeId,@teamId,@userId,@submittedFlag,@ipAddress,@correct,UTC_TIMESTAMP(6))
             """, new { challengeId, teamId, userId, submittedFlag, ipAddress, correct }, tx, cancellationToken: ct));
-        if (!correct) { await tx.CommitAsync(ct); return false; }
+        var attemptId = await db.ExecuteScalarAsync<long>(new CommandDefinition("SELECT LAST_INSERT_ID()", transaction: tx, cancellationToken: ct));
+        if (!correct) { await tx.CommitAsync(ct); return new(attemptId, false); }
 
         var challenge = await db.QuerySingleOrDefaultAsync<ChallengeScoringDbRow>(new CommandDefinition(
             "SELECT Initial,Minimum,Decay,CurrentValue FROM Challenges WHERE Id=@challengeId FOR UPDATE",
             new { challengeId }, tx, cancellationToken: ct));
-        if (challenge is null) { await tx.RollbackAsync(ct); return false; }
+        if (challenge is null) { await tx.RollbackAsync(ct); return new(attemptId, false); }
         if (await db.ExecuteScalarAsync<bool>(new CommandDefinition(
             "SELECT EXISTS(SELECT 1 FROM Solves WHERE ChallengeId=@challengeId AND TeamId=@teamId)",
             new { challengeId, teamId }, tx, cancellationToken: ct)))
-        { await tx.CommitAsync(ct); return false; }
+        { await tx.CommitAsync(ct); return new(attemptId, false); }
 
         var eligiblePriorSolveCount = await db.ExecuteScalarAsync<long>(new CommandDefinition("""
             SELECT COUNT(*) FROM Solves s JOIN Teams t ON t.Id=s.TeamId
@@ -634,7 +642,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         await db.ExecuteAsync(new CommandDefinition(
             "UPDATE Challenges SET CurrentValue=@NextCurrentValue,Points=@NextCurrentValue,UpdatedAtUtc=UTC_TIMESTAMP(6) WHERE Id=@challengeId",
             new { plan.NextCurrentValue, challengeId }, tx, cancellationToken: ct));
-        await tx.CommitAsync(ct); return true;
+        await tx.CommitAsync(ct); return new(attemptId, true);
     }
 
     public async Task<IReadOnlyList<FirstBloodAnnouncement>> GetDueFirstBloodAnnouncementsAsync(int limit, CancellationToken ct)
@@ -684,24 +692,37 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             JOIN Challenges c ON c.Id=a.ChallengeId
             JOIN Teams t ON t.Id=a.TeamId
             JOIN Users u ON u.Id=a.UserId
+            LEFT JOIN CheatIncidents i ON i.SubmissionAttemptId=a.Id
+            LEFT JOIN Teams owner ON owner.Id=i.OwningTeamId
+            LEFT JOIN Challenges ownerChallenge ON ownerChallenge.Id=i.OwningChallengeId
             WHERE (@query='' OR c.Title LIKE @pattern OR t.Name LIKE @pattern OR u.Username LIKE @pattern
-              OR a.SubmittedFlag LIKE @pattern OR COALESCE(a.IpAddress,'') LIKE @pattern)
+              OR a.SubmittedFlag LIKE @pattern OR COALESCE(a.IpAddress,'') LIKE @pattern
+              OR COALESCE(owner.Name,'') LIKE @pattern OR COALESCE(ownerChallenge.Title,'') LIKE @pattern)
               AND (@correctFilter IS NULL OR a.IsCorrect=@correctFilter);
 
             SELECT COUNT(*) Total,
               CAST(COALESCE(SUM(a.IsCorrect=TRUE),0) AS SIGNED) Correct,
-              CAST(COALESCE(SUM(a.IsCorrect=FALSE),0) AS SIGNED) Incorrect
+              CAST(COALESCE(SUM(a.IsCorrect=FALSE),0) AS SIGNED) Incorrect,
+              (SELECT COUNT(*) FROM CheatIncidents i WHERE i.SubmissionAttemptId IS NOT NULL) CrossTeam
             FROM SubmissionAttempts a;
 
             SELECT a.Id,c.Id ChallengeId,c.Title ChallengeTitle,t.Id TeamId,t.Name TeamName,t.CountryCode,
               u.Id UserId,u.Username,COALESCE(a.SubmittedFlag,'') SubmittedFlag,a.IsCorrect,
-              a.IpAddress,a.SubmittedAtUtc
+              a.IpAddress,a.SubmittedAtUtc,i.Id CheatIncidentId,
+              owner.Id FlagOwnerTeamId,owner.Name FlagOwnerTeamName,
+              ownerChallenge.Id FlagOwnerChallengeId,ownerChallenge.Title FlagOwnerChallengeTitle,
+              COALESCE(i.AutoBanApplied,FALSE) AutoBanApplied,i.ManualBanAtUtc,
+              t.IsBanned SubmittingTeamIsBanned
             FROM SubmissionAttempts a
             JOIN Challenges c ON c.Id=a.ChallengeId
             JOIN Teams t ON t.Id=a.TeamId
             JOIN Users u ON u.Id=a.UserId
+            LEFT JOIN CheatIncidents i ON i.SubmissionAttemptId=a.Id
+            LEFT JOIN Teams owner ON owner.Id=i.OwningTeamId
+            LEFT JOIN Challenges ownerChallenge ON ownerChallenge.Id=i.OwningChallengeId
             WHERE (@query='' OR c.Title LIKE @pattern OR t.Name LIKE @pattern OR u.Username LIKE @pattern
-              OR a.SubmittedFlag LIKE @pattern OR COALESCE(a.IpAddress,'') LIKE @pattern)
+              OR a.SubmittedFlag LIKE @pattern OR COALESCE(a.IpAddress,'') LIKE @pattern
+              OR COALESCE(owner.Name,'') LIKE @pattern OR COALESCE(ownerChallenge.Title,'') LIKE @pattern)
               AND (@correctFilter IS NULL OR a.IsCorrect=@correctFilter)
             ORDER BY a.SubmittedAtUtc {direction},a.Id {direction}
             LIMIT @pageSize OFFSET @offset;
@@ -726,6 +747,11 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               JOIN Solves s ON s.TeamId=t.Id
               JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
               WHERE t.IsSuspended=FALSE AND t.IsDisbanded=FALSE AND t.IsBanned=FALSE AND t.IsHidden=FALSE
+                AND NOT EXISTS (
+                  SELECT 1 FROM TeamMembers adminMember
+                  JOIN Users adminUser ON adminUser.Id=adminMember.UserId
+                  WHERE adminMember.TeamId=t.Id AND adminUser.IsAdmin=TRUE
+                )
               GROUP BY t.Id,t.Name,t.CountryCode,t.BracketKey
               HAVING SUM(s.ValueAwarded)>0
             ) q ORDER BY `Rank` LIMIT 500
@@ -743,6 +769,11 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               JOIN Solves s ON s.TeamId=t.Id
               JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
               WHERE t.IsSuspended=FALSE AND t.IsDisbanded=FALSE AND t.IsBanned=FALSE AND t.IsHidden=FALSE
+                AND NOT EXISTS (
+                  SELECT 1 FROM TeamMembers adminMember
+                  JOIN Users adminUser ON adminUser.Id=adminMember.UserId
+                  WHERE adminMember.TeamId=t.Id AND adminUser.IsAdmin=TRUE
+                )
               GROUP BY t.Id,t.Name,t.CountryCode
               HAVING SUM(s.ValueAwarded)>0
               ORDER BY TotalScore DESC,LastSolveAtUtc ASC,t.Name ASC

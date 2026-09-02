@@ -24,6 +24,7 @@ public sealed class FlagOwnershipService(IFlagOwnershipStore store, FlagHasher h
         Guid submittingTeamId,
         Guid submittingUserId,
         Guid submittedChallengeId,
+        long submissionAttemptId,
         CancellationToken ct)
     {
         if (result.Disposition != FlagOwnershipDisposition.OwnedByAnotherTeam
@@ -34,7 +35,7 @@ public sealed class FlagOwnershipService(IFlagOwnershipStore store, FlagHasher h
             return false;
         var incident = new CheatIncident
         {
-            Id = Guid.NewGuid(), SubmittingTeamId = submittingTeamId, OwningTeamId = owningTeamId, SubmittingUserId = submittingUserId,
+            Id = Guid.NewGuid(), SubmissionAttemptId = submissionAttemptId, SubmittingTeamId = submittingTeamId, OwningTeamId = owningTeamId, SubmittingUserId = submittingUserId,
             SubmittedChallengeId = submittedChallengeId, OwningChallengeId = owningChallengeId, OccurredAtUtc = clock.GetUtcNow().UtcDateTime,
             Evidence = "Submitted flag hash " + result.FlagHash[..16] + "... matched instance " + challengeInstanceId.ToString("N") + " owned by team " + owningTeamId.ToString("N") + "."
         };

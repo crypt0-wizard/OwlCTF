@@ -85,4 +85,37 @@ public sealed class ScoreboardApiTests
         Assert.Single(eligible);
         Assert.Equal("Scored", eligible[0].TeamName);
     }
+
+    [Fact]
+    public void StandingsQueriesExcludeEveryTeamContainingAnAdministrator()
+    {
+        var root = FindRepositoryRoot();
+        var data = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
+        const string exclusion = "WHERE adminMember.TeamId=t.Id AND adminUser.IsAdmin=TRUE";
+
+        Assert.Equal(2, CountOccurrences(data, exclusion));
+    }
+
+    private static int CountOccurrences(string value, string expected)
+    {
+        var count = 0;
+        var offset = 0;
+        while ((offset = value.IndexOf(expected, offset, StringComparison.Ordinal)) >= 0)
+        {
+            count++;
+            offset += expected.Length;
+        }
+        return count;
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) return directory.FullName;
+            directory = directory.Parent;
+        }
+        throw new DirectoryNotFoundException("Could not locate the OwlCTF repository root.");
+    }
 }

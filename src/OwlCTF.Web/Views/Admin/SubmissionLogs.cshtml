@@ -40,9 +40,10 @@
   </div>
 
   <div class="row g-3 mt-2 mb-4">
-    <div class="col-sm-4"><div class="admin-stat"><span>Total attempts</span><strong>@Model.Summary.Total</strong></div></div>
-    <div class="col-sm-4"><div class="admin-stat"><span>Correct</span><strong class="text-success">@Model.Summary.Correct</strong></div></div>
-    <div class="col-sm-4"><div class="admin-stat"><span>Incorrect</span><strong class="text-danger">@Model.Summary.Incorrect</strong></div></div>
+    <div class="col-sm-6 col-lg-3"><div class="admin-stat"><span>Total attempts</span><strong>@Model.Summary.Total</strong></div></div>
+    <div class="col-sm-6 col-lg-3"><div class="admin-stat"><span>Correct</span><strong class="text-success">@Model.Summary.Correct</strong></div></div>
+    <div class="col-sm-6 col-lg-3"><div class="admin-stat"><span>Incorrect</span><strong class="text-danger">@Model.Summary.Incorrect</strong></div></div>
+    <div class="col-sm-6 col-lg-3"><div class="admin-stat"><span>Cross-team flags</span><strong class="text-danger">@Model.Summary.CrossTeam</strong></div></div>
   </div>
 
   <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
@@ -89,7 +90,42 @@
             </td>
             <td><a asp-controller="Directory" asp-action="Member" asp-route-id="@attempt.UserId">@attempt.Username</a></td>
             <td>@if (string.IsNullOrEmpty(attempt.SubmittedFlag)) { <span class="text-body-secondary">Not captured</span> } else { <code class="submission-flag" dir="ltr">@attempt.SubmittedFlag</code> }</td>
-            <td>@if (attempt.IsCorrect) { <span class="text-success fw-semibold">Correct</span> } else { <span class="text-danger fw-semibold">Incorrect</span> }</td>
+            <td>
+              @if (attempt.CheatIncidentId is Guid incidentId)
+              {
+                <div class="text-danger fw-semibold">Cross-team flag</div>
+                <div class="small mt-1">
+                  Belonged to
+                  @if (attempt.FlagOwnerTeamId is Guid ownerTeamId && !string.IsNullOrWhiteSpace(attempt.FlagOwnerTeamName))
+                  { <a asp-controller="Directory" asp-action="Team" asp-route-id="@ownerTeamId">@attempt.FlagOwnerTeamName</a> }
+                  else
+                  { <span>an unavailable team</span> }
+                </div>
+                <div class="small">
+                  Issued for
+                  @if (attempt.FlagOwnerChallengeId is Guid ownerChallengeId && !string.IsNullOrWhiteSpace(attempt.FlagOwnerChallengeTitle))
+                  { <a asp-controller="Challenges" asp-action="Detail" asp-route-id="@ownerChallengeId">@attempt.FlagOwnerChallengeTitle</a> }
+                  else
+                  { <span>an unavailable challenge</span> }
+                </div>
+                @if (attempt.AutoBanApplied)
+                { <div class="small text-danger mt-1">Automatically banned</div> }
+                else if (attempt.ManualBanAtUtc is DateTime manualBanAt)
+                { <div class="small text-danger mt-1">Banned by an administrator at <time data-local-time datetime="@TimeDisplay.UtcIso(manualBanAt)">@manualBanAt.ToString("yyyy-MM-dd HH:mm:ss")</time></div> }
+                else if (attempt.SubmittingTeamIsBanned)
+                { <div class="small text-danger mt-1">Team is already banned</div> }
+                else
+                {
+                  <form asp-action="BanTeamFromIncident" asp-route-incidentId="@incidentId" asp-route-query="@Model.Query" asp-route-result="@Model.Result" asp-route-direction="@Model.Direction" asp-route-page="@Model.Page" method="post" class="mt-2">
+                    <button class="btn btn-outline-danger btn-sm" type="submit">Ban team</button>
+                  </form>
+                }
+              }
+              else if (attempt.IsCorrect)
+              { <span class="text-success fw-semibold">Correct</span> }
+              else
+              { <span class="text-danger fw-semibold">Incorrect</span> }
+            </td>
             <td>@if (string.IsNullOrWhiteSpace(attempt.IpAddress)) { <span class="text-body-secondary">Not captured</span> } else { <code class="submission-ip" dir="ltr">@attempt.IpAddress</code> }</td>
           </tr>
         }

@@ -17,9 +17,14 @@ public sealed record ChallengeRecord(Guid Id, string Title, string Slug, string 
 }
 public sealed record AdminManagedChallengeRecord(Guid Id, string Title, string Slug, string Author, string CategoryKey, int Initial, int Minimum, int Decay, int CurrentValue, bool IsVisible, long SolveCount, long FileCount, DateTime CreatedAtUtc, DateTime UpdatedAtUtc)
 { public int Points => CurrentValue; }
-public sealed record AdminSubmissionLogRecord(long Id, Guid ChallengeId, string ChallengeTitle, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string Username, string SubmittedFlag, bool IsCorrect, string? IpAddress, DateTime SubmittedAtUtc);
-public sealed record AdminSubmissionLogSummary(long Total, long Correct, long Incorrect);
+public sealed record AdminSubmissionLogRecord(
+    long Id, Guid ChallengeId, string ChallengeTitle, Guid TeamId, string TeamName, string? CountryCode,
+    Guid UserId, string Username, string SubmittedFlag, bool IsCorrect, string? IpAddress, DateTime SubmittedAtUtc,
+    Guid? CheatIncidentId, Guid? FlagOwnerTeamId, string? FlagOwnerTeamName, Guid? FlagOwnerChallengeId,
+    string? FlagOwnerChallengeTitle, bool AutoBanApplied, DateTime? ManualBanAtUtc, bool SubmittingTeamIsBanned);
+public sealed record AdminSubmissionLogSummary(long Total, long Correct, long Incorrect, long CrossTeam);
 public sealed record AdminSubmissionLogPage(IReadOnlyList<AdminSubmissionLogRecord> Attempts, long MatchCount, AdminSubmissionLogSummary Summary);
+public sealed record SubmissionRecordResult(long AttemptId, bool Awarded);
 public sealed record ChallengeFileRecord(Guid Id, Guid ChallengeId, string OriginalName, string StorageName, long SizeBytes, string Sha256);
 public sealed record ChallengeSolveRecord(long Rank, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string SolverUsername, int PointsAwarded, DateTime SolvedAtUtc);
 public sealed record RecentSolveRecord(Guid Id, Guid ChallengeId, string ChallengeTitle, string CategoryKey, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string Username, int PointsAwarded, DateTime SolvedAtUtc);

@@ -19,6 +19,12 @@ public sealed class HomeController(PlatformService platform, MarkdownService mar
             markdown.Render(settings.ContactDescription),
             sponsorLogos.List()));
     }
+
+    [Authorize]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
+    [Route("/team/blocked")]
+    public IActionResult TeamBlocked() => View();
+
     [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     [Route("/error/{statusCode:int?}")]

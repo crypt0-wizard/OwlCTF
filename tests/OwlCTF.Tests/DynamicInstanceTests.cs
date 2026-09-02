@@ -29,8 +29,9 @@ public sealed class FlagOwnershipTests
         var service = CreateService(store, flag, owner, challenge, false, notifier);
         var result = await service.CheckAsync(flag, submitter, Guid.NewGuid(), challenge, TestContext.Current.CancellationToken);
         Assert.Equal(FlagOwnershipDisposition.OwnedByAnotherTeam, result.Disposition);
-        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, Guid.NewGuid(), challenge, TestContext.Current.CancellationToken);
+        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, Guid.NewGuid(), challenge, 42, TestContext.Current.CancellationToken);
         Assert.False(banned);
+        Assert.Equal(42, store.Incidents[0].SubmissionAttemptId);
         Assert.Single(store.Incidents); Assert.True(notifier.Called); Assert.Null(store.BannedTeam);
         Assert.DoesNotContain(flag, store.Incidents[0].Evidence, StringComparison.Ordinal);
     }
@@ -44,7 +45,7 @@ public sealed class FlagOwnershipTests
         var user = Guid.NewGuid();
         var result = await service.CheckAsync(flag, submitter, user, challenge, TestContext.Current.CancellationToken);
         Assert.Null(store.BannedTeam);
-        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, user, challenge, TestContext.Current.CancellationToken);
+        var banned = await service.ReportCrossTeamMatchAsync(result, submitter, user, challenge, 43, TestContext.Current.CancellationToken);
         Assert.True(banned);
         Assert.Equal(submitter, store.BannedTeam); Assert.True(store.AutoBanMarked);
     }
@@ -65,6 +66,8 @@ public sealed class FlagOwnershipTests
         public Task MarkIncidentNotifiedAsync(Guid id, CancellationToken ct) => Task.CompletedTask;
         public Task BanTeamAsync(Guid teamId, string reason, CancellationToken ct) { BannedTeam = teamId; return Task.CompletedTask; }
         public Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct) { AutoBanMarked = true; return Task.CompletedTask; }
+        public Task<CheatIncident?> GetIncidentAsync(Guid incidentId, CancellationToken ct) => Task.FromResult(Incidents.SingleOrDefault(incident => incident.Id == incidentId));
+        public Task MarkIncidentManualBanAsync(Guid incidentId, Guid adminUserId, CancellationToken ct) => Task.CompletedTask;
     }
 }
 
@@ -133,6 +136,34 @@ public sealed class InstancePanelTests
         Assert.Contains("allowSuspendedTeam: true", controller, StringComparison.Ordinal);
         Assert.Contains("challenge_already_solved", controller, StringComparison.Ordinal);
         Assert.Contains("ResponseCache(NoStore = true", controller, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void BlockedTeamsAlwaysReachTheirDedicatedPage()
+    {
+        var root = FindRepositoryRoot();
+        var middleware = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Services", "TeamAccessGuardMiddleware.cs"));
+
+        Assert.Contains("StartsWithSegments(\"/team/blocked\")", middleware, StringComparison.Ordinal);
+        Assert.Contains("Redirect(\"/team/blocked\")", middleware, StringComparison.Ordinal);
+
+        var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Home", "TeamBlocked.cshtml"));
+        Assert.Contains("Your team got benched", page, StringComparison.Ordinal);
+        Assert.Contains("asp-action=\"Logout\"", page, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void SubmissionLogsExposeCrossTeamOwnershipAndAdminAction()
+    {
+        var root = FindRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Admin", "SubmissionLogs.cshtml"));
+        var migration = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "Migrations", "202609020001_LinkCheatIncidentsToSubmissions.cs"));
+
+        Assert.Contains("Cross-team flag", page, StringComparison.Ordinal);
+        Assert.Contains("FlagOwnerTeamName", page, StringComparison.Ordinal);
+        Assert.Contains("FlagOwnerChallengeTitle", page, StringComparison.Ordinal);
+        Assert.Contains("asp-action=\"BanTeamFromIncident\"", page, StringComparison.Ordinal);
+        Assert.Contains("SubmissionAttemptId", migration, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

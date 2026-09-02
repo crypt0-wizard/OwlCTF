@@ -14,7 +14,15 @@ public sealed class TeamAccessGuardMiddleware(RequestDelegate next)
 
     public async Task InvokeAsync(HttpContext context, IDbContextFactory<InstanceDbContext> factory, IMemoryCache cache, IOptions<DynamicInstanceOptions> configured)
     {
-        if (context.User.Identity?.IsAuthenticated != true || context.User.IsInRole("Admin") || context.Request.Path.StartsWithSegments("/auth")) { await next(context); return; }
+        if (context.User.Identity?.IsAuthenticated != true
+            || context.User.IsInRole("Admin")
+            || context.Request.Path.StartsWithSegments("/auth")
+            || context.Request.Path.StartsWithSegments("/error")
+            || context.Request.Path.StartsWithSegments("/team/blocked"))
+        {
+            await next(context);
+            return;
+        }
         if (!Guid.TryParse(context.User.FindFirstValue("owlctf:user_id"), out var userId)) { await next(context); return; }
         var decision = await cache.GetOrCreateAsync(CacheKey(userId), async entry =>
         {
@@ -30,6 +38,6 @@ public sealed class TeamAccessGuardMiddleware(RequestDelegate next)
             context.Response.StatusCode = StatusCodes.Status403Forbidden;
             await context.Response.WriteAsJsonAsync(new { error = "team_blocked", message = decision.Reason ?? "Your team is blocked from platform access." }, context.RequestAborted);
         }
-        else context.Response.Redirect("/error/403");
+        else context.Response.Redirect("/team/blocked");
     }
 }

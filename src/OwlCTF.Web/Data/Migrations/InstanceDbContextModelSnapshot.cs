@@ -138,6 +138,12 @@ namespace OwlCTF.Data.Migrations
                     b.Property<DateTime>("OccurredAtUtc")
                         .HasColumnType("datetime(6)");
 
+                    b.Property<DateTime?>("ManualBanAtUtc")
+                        .HasColumnType("datetime(6)");
+
+                    b.Property<Guid?>("ManualBanByUserId")
+                        .HasColumnType("char(36)");
+
                     b.Property<Guid>("OwningChallengeId")
                         .HasColumnType("char(36)");
 
@@ -153,9 +159,15 @@ namespace OwlCTF.Data.Migrations
                     b.Property<Guid>("SubmittingUserId")
                         .HasColumnType("char(36)");
 
+                    b.Property<long?>("SubmissionAttemptId")
+                        .HasColumnType("bigint");
+
                     b.HasKey("Id");
 
                     b.HasIndex("OccurredAtUtc");
+
+                    b.HasIndex("SubmissionAttemptId")
+                        .IsUnique();
 
                     b.ToTable("CheatIncidents", (string)null);
                 });

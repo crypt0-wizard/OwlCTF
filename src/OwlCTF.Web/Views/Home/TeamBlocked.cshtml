@@ -1,0 +1,19 @@
+@{
+  Layout = "_ErrorLayout";
+  ViewData["Title"] = "Team benched";
+}
+<main class="error-page">
+  <div class="container">
+    <section class="error-card" aria-labelledby="blockedTeamTitle">
+      <img class="error-brand-mark" src="@BrandingStorage.DefaultLogoPath" alt="" aria-hidden="true" asp-append-version="true">
+      <div class="error-status">Flag-sharing foul</div>
+      <h1 id="blockedTeamTitle">Your team got benched</h1>
+      <p>That flag belonged to another team. Borrowing flags is not a team-building exercise, so your squad is sitting this round out while an administrator reviews what happened.</p>
+      <div class="error-actions">
+        <form asp-controller="Auth" asp-action="Logout" method="post">
+          <button class="btn btn-outline-secondary" type="submit">Sign out</button>
+        </form>
+      </div>
+    </section>
+  </div>
+</main>

@@ -112,6 +112,17 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
     public async Task MarkIncidentAutoBanAsync(Guid incidentId, CancellationToken ct)
     { await using var db = await factory.CreateDbContextAsync(ct); await db.CheatIncidents.Where(x => x.Id == incidentId).ExecuteUpdateAsync(s => s.SetProperty(x => x.AutoBanApplied, true), ct); }
 
+    public async Task<CheatIncident?> GetIncidentAsync(Guid incidentId, CancellationToken ct)
+    { await using var db = await factory.CreateDbContextAsync(ct); return await db.CheatIncidents.AsNoTracking().SingleOrDefaultAsync(x => x.Id == incidentId, ct); }
+
+    public async Task MarkIncidentManualBanAsync(Guid incidentId, Guid adminUserId, CancellationToken ct)
+    {
+        await using var db = await factory.CreateDbContextAsync(ct);
+        await db.CheatIncidents.Where(x => x.Id == incidentId).ExecuteUpdateAsync(
+            s => s.SetProperty(x => x.ManualBanAtUtc, DateTime.UtcNow)
+                .SetProperty(x => x.ManualBanByUserId, adminUserId), ct);
+    }
+
     private static string Truncate(string value, int max = 1_000) => value.Length <= max ? value : value[..max];
 }
 
