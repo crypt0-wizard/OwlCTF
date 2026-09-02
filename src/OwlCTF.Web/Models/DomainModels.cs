@@ -8,7 +8,7 @@ public sealed record AdminUserRecord(Guid Id, string Username, string DiscordId,
 public sealed record ProfileRecord(Guid Id, string DiscordId, string Username, string? AvatarHash, bool IsAdmin, DateTime CreatedAtUtc, DateTime LastLoginAtUtc, Guid? TeamId, string? TeamName, decimal Score, long SolveCount);
 public sealed record TeamRecord(Guid Id, string Name, Guid CaptainUserId, DateTime CreatedAtUtc, string? CountryCode, string? Status, string BracketKey, bool IsSuspended);
 public sealed record AdminTeamRecord(Guid Id, string Name, string? CountryCode, string? Status, string BracketKey, string JoinCode, bool IsSuspended);
-public sealed record AdminManagedTeamRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string JoinCode, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
+public sealed record AdminManagedTeamRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string JoinCode, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsBanned, bool IsAutoBanned, string? SecurityReason, DateTime? BannedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
 public sealed record ChallengeRecord(Guid Id, string Title, string Slug, string Description, string Author, string CategoryKey, string Tags, int Initial, int Minimum, int Decay, int CurrentValue, bool IsVisible, long SolveCount, int IsSolvedValue)
 {
     public bool IsSolved => IsSolvedValue != 0;

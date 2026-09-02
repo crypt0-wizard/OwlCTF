@@ -2,6 +2,9 @@
 @{
   ViewData["Title"] = "Platform management";
   var useOwlCtfWordmark = string.Equals(Model.Settings.PlatformName, "OwlCTF", StringComparison.OrdinalIgnoreCase);
+  var hasCustomNavbarLogo = !string.IsNullOrWhiteSpace(Model.Settings.NavbarLogoPath)
+    && Model.Settings.NavbarLogoPath != BrandingStorage.DefaultLogoPath
+    && Model.Settings.NavbarLogoPath != BrandingStorage.AdaptiveLogoPath;
 }
 <main><div class="container">
   <h1 class="welcome-heading mb-1">Platform management</h1>
@@ -46,7 +49,7 @@
             <div class="form-text">Use a PNG, JPEG or WebP up to 2 MB. A wide transparent PNG works best.</div>
             <div class="d-flex flex-wrap gap-2 mt-3">
               <button class="btn btn-owlctf btn-sm" type="submit">Upload logo</button>
-              @if (Model.Settings.NavbarLogoPath != BrandingStorage.DefaultLogoPath)
+              @if (!hasCustomNavbarLogo && Model.Settings.NavbarLogoPath != BrandingStorage.DefaultLogoPath)
               { <button class="btn btn-outline-success btn-sm" type="submit" form="defaultNavbarLogo">Use OwlCTF logo</button> }
               @if (Model.Settings.NavbarLogoPath != BrandingStorage.AdaptiveLogoPath)
               { <button class="btn btn-outline-primary btn-sm" type="submit" form="adaptiveNavbarLogo">Use adaptive logo</button> }

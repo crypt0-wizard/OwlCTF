@@ -394,8 +394,8 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
             "solves" => descending ? teams.OrderByDescending(team => team.SolveCount) : teams.OrderBy(team => team.SolveCount),
             "created" => descending ? teams.OrderByDescending(team => team.CreatedAtUtc) : teams.OrderBy(team => team.CreatedAtUtc),
             "state" => descending
-                ? teams.OrderByDescending(team => team.IsDisbanded ? 2 : team.IsSuspended ? 1 : 0)
-                : teams.OrderBy(team => team.IsDisbanded ? 2 : team.IsSuspended ? 1 : 0),
+                ? teams.OrderByDescending(team => team.IsDisbanded ? 3 : team.IsBanned ? 2 : team.IsSuspended ? 1 : 0)
+                : teams.OrderBy(team => team.IsDisbanded ? 3 : team.IsBanned ? 2 : team.IsSuspended ? 1 : 0),
             _ => descending ? teams.OrderByDescending(team => team.Name) : teams.OrderBy(team => team.Name)
         };
 

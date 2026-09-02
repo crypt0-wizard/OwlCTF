@@ -1,12 +1,15 @@
 @model ErrorPageViewModel
+@inject OwlCTF.Services.PlatformService Platform
 @{
   Layout = "_ErrorLayout";
   ViewData["Title"] = Model.Title;
+  var site = await Platform.GetAsync(Context.RequestAborted);
+  var errorLogoPath = site.NavbarLogoPath ?? BrandingStorage.DefaultLogoPath;
 }
 <main class="error-page">
   <div class="container">
     <section class="error-card" aria-labelledby="errorTitle">
-      <img class="error-brand-mark" src="@BrandingStorage.DefaultLogoPath" alt="" aria-hidden="true" asp-append-version="true">
+      <img class="error-brand-mark" src="@errorLogoPath" alt="" aria-hidden="true" asp-append-version="true">
       <div class="error-status">Error @Model.StatusCode</div>
       <h1 id="errorTitle">@Model.Title</h1>
       <p>@Model.Message</p>

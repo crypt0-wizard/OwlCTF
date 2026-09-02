@@ -454,7 +454,10 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
               (SELECT COUNT(*) FROM TeamMembers members WHERE members.TeamId=t.Id) MemberCount,
               (SELECT COALESCE(SUM(s.ValueAwarded),0) FROM Solves s WHERE s.TeamId=t.Id) Score,
               (SELECT COUNT(*) FROM Solves s WHERE s.TeamId=t.Id) SolveCount,
-              t.JoinCodeProtected,t.IsSuspended,t.SuspensionReason,t.SuspendedAtUtc,t.IsDisbanded,t.DisbandedAtUtc
+              t.JoinCodeProtected,t.IsSuspended,t.SuspensionReason,t.SuspendedAtUtc,
+              t.IsBanned,
+              EXISTS(SELECT 1 FROM CheatIncidents incident WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE) IsAutoBanned,
+              t.SecurityReason,t.BannedAtUtc,t.IsDisbanded,t.DisbandedAtUtc
             FROM Teams t
             JOIN Users captain ON captain.Id=t.CaptainUserId
             ORDER BY t.Name
@@ -464,6 +467,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             team.CaptainUsername, team.MemberCount, team.Score, team.SolveCount,
             joinCodes.Unprotect(team.JoinCodeProtected) ?? "Unavailable",
             team.IsSuspended, team.SuspensionReason, Utc(team.SuspendedAtUtc),
+            team.IsBanned, team.IsAutoBanned, team.SecurityReason, Utc(team.BannedAtUtc),
             team.IsDisbanded, Utc(team.DisbandedAtUtc))).ToArray();
     }
 
@@ -981,7 +985,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     }
 
     private sealed record AdminTeamDbRecord(Guid Id, string Name, string? CountryCode, string? Status, string BracketKey, string? JoinCodeProtected, bool IsSuspended);
-    private sealed record AdminManagedTeamDbRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string? JoinCodeProtected, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
+    private sealed record AdminManagedTeamDbRecord(Guid Id, string Name, string? CountryCode, string BracketKey, string? Status, DateTime CreatedAtUtc, string CaptainUsername, long MemberCount, decimal Score, long SolveCount, string? JoinCodeProtected, bool IsSuspended, string? SuspensionReason, DateTime? SuspendedAtUtc, bool IsBanned, bool IsAutoBanned, string? SecurityReason, DateTime? BannedAtUtc, bool IsDisbanded, DateTime? DisbandedAtUtc);
     private sealed record TeamExitDbRecord(Guid TeamId, string TeamName, Guid CaptainUserId);
     private sealed record ChallengeScoringDbRow(int Initial, int Minimum, int Decay, int CurrentValue);
     private sealed record ChallengeLockDbRow(Guid Id);

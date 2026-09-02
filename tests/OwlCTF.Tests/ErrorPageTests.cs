@@ -40,8 +40,40 @@ public sealed class ErrorPageTests
         Assert.False(string.IsNullOrWhiteSpace(model.RequestId));
     }
 
+    [Fact]
+    public void ErrorLayoutUsesTheConfiguredNavbarLogoAndFavicon()
+    {
+        var root = FindRepositoryRoot();
+        var layout = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Shared", "_ErrorLayout.cshtml"));
+
+        Assert.Contains("site.NavbarLogoPath", layout, StringComparison.Ordinal);
+        Assert.Contains("site.FaviconPath", layout, StringComparison.Ordinal);
+        Assert.Contains("site.PlatformName", layout, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TeamManagementLabelsAutomaticBans()
+    {
+        var root = FindRepositoryRoot();
+        var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Admin", "Teams.cshtml"));
+
+        Assert.Contains("Auto-banned", page, StringComparison.Ordinal);
+        Assert.Contains("team.IsAutoBanned", page, StringComparison.Ordinal);
+    }
+
     private static HomeController CreateController() => new(null!, null!, null!)
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
     };
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) return directory.FullName;
+            directory = directory.Parent;
+        }
+        throw new DirectoryNotFoundException("Could not locate the OwlCTF repository root.");
+    }
 }
