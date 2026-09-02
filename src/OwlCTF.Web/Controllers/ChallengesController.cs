@@ -7,10 +7,12 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.Extensions.Options;
+using OwlCTF.Options;
 
 namespace OwlCTF.Controllers;
 
-public sealed class ChallengesController(AppDb db, PlatformService platform, FlagHasher flags, FlagOwnershipService ownership, FileStorage storage, ScoreboardService scoreboard, IHubContext<ActivityHub> activity) : Controller
+public sealed class ChallengesController(AppDb db, PlatformService platform, FlagHasher flags, FlagOwnershipService ownership, FileStorage storage, ScoreboardService scoreboard, IHubContext<ActivityHub> activity, IInstanceStore instanceStore, IOptions<DynamicInstanceOptions> instanceOptions) : Controller
 {
     public async Task<IActionResult> Index(string? sort, string? tag, CancellationToken ct)
     {
@@ -47,8 +49,13 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
         if (challenge is null) return NotFound();
         var filesTask = db.GetChallengeFilesAsync(id, ct);
         var solvesTask = db.GetChallengeSolvesAsync(id, ct);
-        await Task.WhenAll(filesTask, solvesTask);
-        return View(new ChallengeDetailViewModel(challenge, await filesTask, await solvesTask, team, state, FlagPrefixPolicy.Normalize(settings.FlagPrefix)));
+        var instanceConfigTask = instanceStore.GetConfigAsync(id, ct);
+        await Task.WhenAll(filesTask, solvesTask, instanceConfigTask);
+        var instanceConfig = await instanceConfigTask;
+        var instancePanel = instanceConfig?.Enabled == true
+            ? new ChallengeInstancePanel(instanceOptions.Value.Enabled, instanceConfig.MaxRenewals, instanceOptions.Value.RenewalSeconds)
+            : null;
+        return View(new ChallengeDetailViewModel(challenge, await filesTask, await solvesTask, team, state, FlagPrefixPolicy.Normalize(settings.FlagPrefix), instancePanel));
     }
 
     [Authorize, HttpGet("challenges/files/{id:guid}")]

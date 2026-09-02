@@ -138,7 +138,9 @@ public sealed class InstanceLifecycleService(
             status.ToString(),
             port is null ? null : options.PublicHost,
             port,
-            status is ChallengeInstanceStatus.Active or ChallengeInstanceStatus.Provisioning ? item.ExpiresAtUtc : null,
+            status is ChallengeInstanceStatus.Active or ChallengeInstanceStatus.Provisioning
+                ? DateTime.SpecifyKind(item.ExpiresAtUtc, DateTimeKind.Utc)
+                : null,
             item.RenewalCount,
             null);
 

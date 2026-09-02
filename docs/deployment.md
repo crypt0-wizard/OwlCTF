@@ -82,6 +82,13 @@ AUTO_BAN_ON_CHEAT=false
 `DYNAMIC_INSTANCES_ENABLED` is the platform-wide switch. A challenge must
 also have its own Docker instance option enabled in challenge management.
 
+For an enabled challenge, signed-in team members receive an instance panel on
+the challenge page. They can start the team's container, copy its connection
+address, renew it within the configured limit and stop it when finished.
+Starting and renewing are available only while the event is live. Status checks
+and stopping remain available afterward so an existing container can be cleaned
+up safely.
+
 Keep `AUTO_BAN_ON_CHEAT=false` unless the event policy explicitly calls for
 automatic enforcement. With it disabled, cross-team instance-flag matches
 are still recorded as incidents and sent to the configured administrator

@@ -1,7 +1,9 @@
 @model ChallengeDetailViewModel
 @using OwlCTF.Services
+@using System.Text.Json
 @{
   ViewData["Title"] = Model.Challenge.Title;
+  var cspNonce = Context.Items["CspNonce"] as string;
   var category = ChallengeCategoryCatalog.Get(Model.Challenge.CategoryKey);
   var countries = CountryCatalog.All.ToDictionary(country => country.Code, StringComparer.OrdinalIgnoreCase);
   var flagPlaceholder = $"{Model.FlagPrefix}{{...}}";
@@ -36,6 +38,45 @@
         @foreach (var file in Model.Files)
         { <a class="list-group-item list-group-item-action" asp-action="Download" asp-route-id="@file.Id"><i class="bi bi-download me-2"></i>@file.OriginalName <small class="text-body-secondary">(@FileSizeDisplay.Format(file.SizeBytes))</small></a> }
         </div>
+      }
+      @if (Model.Instance is not null)
+      {
+        <section id="challengeInstance"
+                 class="challenge-instance-panel"
+                 aria-labelledby="challengeInstanceTitle"
+                 aria-busy="true">
+          <div class="challenge-instance-heading">
+            <div>
+              <h2 id="challengeInstanceTitle">Challenge instance</h2>
+              <p id="instanceSummary" class="mb-0 text-body-secondary">Checking your team instance…</p>
+            </div>
+            <span id="instanceStatus" class="badge text-bg-secondary">Checking</span>
+          </div>
+          <div id="instanceMessage" class="alert py-2 mt-3 mb-0" role="status" aria-live="polite" hidden></div>
+          <dl id="instanceDetails" class="challenge-instance-details" hidden>
+            <div id="instanceConnectionRow">
+              <dt>Connection</dt>
+              <dd>
+                <code id="instanceConnection"></code>
+                <button id="copyInstanceConnection" class="btn btn-outline-secondary btn-sm" type="button">Copy</button>
+              </dd>
+            </div>
+            <div>
+              <dt>Expires</dt>
+              <dd><time id="instanceExpiryTime"></time><span id="instanceCountdown" class="text-body-secondary"></span></dd>
+            </div>
+            <div>
+              <dt>Renewals</dt>
+              <dd id="instanceRenewals">0 of @Model.Instance.MaxRenewals used</dd>
+            </div>
+          </dl>
+          <div id="instanceActions" class="challenge-instance-actions" hidden>
+            <button id="startInstance" class="btn btn-owlctf" type="button">Start instance</button>
+            <button id="renewInstance" class="btn btn-outline-primary" type="button">Renew instance</button>
+            <button id="stopInstance" class="btn btn-outline-danger" type="button">Stop instance</button>
+          </div>
+          <form id="instanceAntiforgery" class="d-none" aria-hidden="true">@Html.AntiForgeryToken()</form>
+        </section>
       }
       @if (Model.Challenge.IsSolved)
       { <div class="alert alert-success mb-0">Your team solved this challenge.</div> }
@@ -95,3 +136,238 @@
     }
   </div>
 </div></main>
+@if (Model.Instance is not null)
+{
+  @section Scripts {
+    <script nonce="@cspNonce">
+      (() => {
+        const config = @Html.Raw(JsonSerializer.Serialize(new
+        {
+          challengeId = Model.Challenge.Id,
+          platformEnabled = Model.Instance.PlatformEnabled,
+          hasTeam = Model.Team is not null,
+          teamSuspended = Model.Team?.IsSuspended == true,
+          phase = Model.State.Phase.ToString(),
+          maxRenewals = Model.Instance.MaxRenewals,
+          renewalSeconds = Model.Instance.RenewalSeconds
+        }));
+        const panel = document.getElementById('challengeInstance');
+        const statusBadge = document.getElementById('instanceStatus');
+        const summary = document.getElementById('instanceSummary');
+        const message = document.getElementById('instanceMessage');
+        const details = document.getElementById('instanceDetails');
+        const connectionRow = document.getElementById('instanceConnectionRow');
+        const connection = document.getElementById('instanceConnection');
+        const expiryTime = document.getElementById('instanceExpiryTime');
+        const countdown = document.getElementById('instanceCountdown');
+        const renewals = document.getElementById('instanceRenewals');
+        const actions = document.getElementById('instanceActions');
+        const startButton = document.getElementById('startInstance');
+        const renewButton = document.getElementById('renewInstance');
+        const stopButton = document.getElementById('stopInstance');
+        const copyButton = document.getElementById('copyInstanceConnection');
+        const antiForgeryToken = document.querySelector('#instanceAntiforgery input[name="__RequestVerificationToken"]')?.value || '';
+        let current = null;
+        let busy = false;
+        let expiryTimer = null;
+        let expiryRefreshQueued = false;
+
+        function showMessage(text, kind = 'danger') {
+          message.hidden = !text;
+          message.textContent = text || '';
+          message.className = 'alert alert-' + kind + ' py-2 mt-3 mb-0';
+        }
+
+        function setStatus(status) {
+          const styles = {
+            Active: 'text-bg-success',
+            Provisioning: 'text-bg-warning',
+            Stopping: 'text-bg-warning',
+            Failed: 'text-bg-danger',
+            Expired: 'text-bg-secondary',
+            Stopped: 'text-bg-secondary'
+          };
+          statusBadge.textContent = status;
+          statusBadge.className = 'badge ' + (styles[status] || 'text-bg-secondary');
+        }
+
+        function formatEndpoint(host, port) {
+          const displayHost = host.includes(':') && !host.startsWith('[') ? '[' + host + ']' : host;
+          return displayHost + ':' + port;
+        }
+
+        function durationText(totalSeconds) {
+          const seconds = Math.max(0, Math.floor(totalSeconds));
+          const days = Math.floor(seconds / 86400);
+          const hours = Math.floor((seconds % 86400) / 3600);
+          const minutes = Math.floor((seconds % 3600) / 60);
+          const remainder = seconds % 60;
+          const parts = [];
+          if (days) parts.push(days + 'd');
+          if (hours || days) parts.push(hours + 'h');
+          parts.push(minutes + 'm');
+          parts.push(remainder + 's');
+          return parts.join(' ');
+        }
+
+        function updateExpiry() {
+          if (expiryTimer) clearInterval(expiryTimer);
+          expiryTimer = null;
+          if (!current?.expiresAtUtc) {
+            countdown.textContent = '';
+            return;
+          }
+
+          const expiresAt = new Date(current.expiresAtUtc);
+          const render = () => {
+            const remaining = (expiresAt.getTime() - Date.now()) / 1000;
+            countdown.textContent = remaining > 0 ? ' · ' + durationText(remaining) + ' remaining' : ' · Expiring now';
+            if (remaining <= 0 && !expiryRefreshQueued) {
+              expiryRefreshQueued = true;
+              clearInterval(expiryTimer);
+              expiryTimer = null;
+              setTimeout(() => loadStatus(true), 2000);
+            }
+          };
+          render();
+          expiryTimer = setInterval(render, 1000);
+        }
+
+        function updateButtons(status) {
+          const active = status === 'Active';
+          const stopped = status === 'Stopped' || status === 'Expired' || status === 'Failed';
+          const canProvision = config.phase === 'Live' && !config.teamSuspended;
+          const renewalLimitReached = Number(current?.renewalCount || 0) >= config.maxRenewals;
+
+          actions.hidden = false;
+          startButton.hidden = !stopped;
+          renewButton.hidden = !active;
+          stopButton.hidden = !active;
+          startButton.disabled = busy || !canProvision;
+          renewButton.disabled = busy || !canProvision || renewalLimitReached;
+          stopButton.disabled = busy;
+        }
+
+        function render(instance) {
+          current = instance;
+          expiryRefreshQueued = false;
+          const status = instance.status || 'Stopped';
+          const active = status === 'Active';
+          setStatus(status);
+          panel.setAttribute('aria-busy', busy ? 'true' : 'false');
+          details.hidden = !active;
+
+          if (active) {
+            const hasConnection = Boolean(instance.host && instance.port);
+            connectionRow.hidden = !hasConnection;
+            connection.textContent = hasConnection ? formatEndpoint(instance.host, instance.port) : '';
+            expiryTime.dateTime = instance.expiresAtUtc || '';
+            expiryTime.textContent = instance.expiresAtUtc || 'Not available';
+            if (window.owlctfLocalTime) window.owlctfLocalTime.render(panel);
+            renewals.textContent = Number(instance.renewalCount || 0) + ' of ' + config.maxRenewals + ' used';
+            summary.textContent = config.teamSuspended
+              ? 'Your team is suspended. You can stop this running instance.'
+              : 'Your private challenge service is ready.';
+          } else if (config.teamSuspended) {
+            summary.textContent = 'Your team is suspended and cannot start an instance.';
+          } else if (config.phase !== 'Live') {
+            summary.textContent = config.phase === 'Ended'
+              ? 'The event has ended. New instances are closed.'
+              : 'Instances will become available when the CTF is live.';
+          } else {
+            summary.textContent = 'Start a private instance for your team when you are ready.';
+          }
+
+          updateExpiry();
+          updateButtons(status);
+        }
+
+        async function readResponse(response) {
+          const type = response.headers.get('content-type') || '';
+          if (type.includes('application/json')) return await response.json();
+          return { message: response.ok ? '' : 'The server returned an unexpected response.' };
+        }
+
+        async function loadStatus(silent = false) {
+          try {
+            const response = await fetch('/api/instances/' + config.challengeId, {
+              method: 'GET',
+              credentials: 'same-origin',
+              headers: { Accept: 'application/json' }
+            });
+            const payload = await readResponse(response);
+            if (!response.ok) throw new Error(payload.message || 'Could not load the instance status.');
+            render(payload);
+            if (!silent) showMessage('');
+          } catch (error) {
+            setStatus('Unavailable');
+            summary.textContent = 'Instance status is unavailable.';
+            actions.hidden = true;
+            details.hidden = true;
+            if (!silent) showMessage(error.message || 'Could not load the instance status.');
+          } finally {
+            panel.setAttribute('aria-busy', 'false');
+          }
+        }
+
+        async function runAction(action, progressText, successText) {
+          if (busy) return;
+          busy = true;
+          panel.setAttribute('aria-busy', 'true');
+          summary.textContent = progressText;
+          showMessage('');
+          updateButtons(current?.status || 'Stopped');
+          try {
+            const response = await fetch('/api/instances/' + config.challengeId + '/' + action, {
+              method: 'POST',
+              credentials: 'same-origin',
+              headers: {
+                Accept: 'application/json',
+                RequestVerificationToken: antiForgeryToken
+              }
+            });
+            const payload = await readResponse(response);
+            if (!response.ok) throw new Error(payload.message || 'The instance action failed.');
+            showMessage(successText, 'success');
+            render(payload);
+          } catch (error) {
+            showMessage(error.message || 'The instance action failed.');
+            await loadStatus(true);
+          } finally {
+            busy = false;
+            panel.setAttribute('aria-busy', 'false');
+            if (current) updateButtons(current.status || 'Stopped');
+          }
+        }
+
+        startButton.addEventListener('click', () => runAction('start', 'Starting your instance…', 'Instance started.'));
+        renewButton.addEventListener('click', () => {
+          const minutes = Math.max(1, Math.round(config.renewalSeconds / 60));
+          runAction('renew', 'Renewing your instance…', 'Instance renewed for up to ' + minutes + ' more minutes.');
+        });
+        stopButton.addEventListener('click', () => runAction('stop', 'Stopping your instance…', 'Instance stopped.'));
+        copyButton.addEventListener('click', async () => {
+          if (!connection.textContent) return;
+          try {
+            await navigator.clipboard.writeText(connection.textContent);
+            showMessage('Connection copied.', 'success');
+          } catch {
+            showMessage('Could not copy automatically. Select the connection address and copy it manually.');
+          }
+        });
+
+        if (!config.platformEnabled) {
+          setStatus('Unavailable');
+          summary.textContent = 'Dynamic instances are disabled on this server.';
+          panel.setAttribute('aria-busy', 'false');
+        } else if (!config.hasTeam) {
+          setStatus('Team required');
+          summary.textContent = 'Create or join a team before starting an instance.';
+          panel.setAttribute('aria-busy', 'false');
+        } else {
+          loadStatus();
+        }
+      })();
+    </script>
+  }
+}

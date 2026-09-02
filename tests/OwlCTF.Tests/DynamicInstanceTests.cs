@@ -97,3 +97,43 @@ public sealed class InstanceExpiryProcessorTests
         public Task StopAndRemoveAsync(string containerId, CancellationToken ct) { Removed = containerId; return Failure is null ? Task.CompletedTask : Task.FromException(Failure); }
     }
 }
+
+public sealed class InstancePanelTests
+{
+    [Fact]
+    public void ChallengePageWiresEveryInstanceAction()
+    {
+        var root = FindRepositoryRoot();
+        var view = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Challenges", "Detail.cshtml"));
+
+        Assert.Contains("id=\"startInstance\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"renewInstance\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"stopInstance\"", view, StringComparison.Ordinal);
+        Assert.Contains("id=\"copyInstanceConnection\"", view, StringComparison.Ordinal);
+        Assert.Contains("RequestVerificationToken: antiForgeryToken", view, StringComparison.Ordinal);
+        Assert.Contains("'/api/instances/' + config.challengeId", view, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void InstanceApiKeepsAntiforgeryProtection()
+    {
+        var root = FindRepositoryRoot();
+        var controller = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Controllers", "InstancesController.cs"));
+
+        Assert.DoesNotContain("IgnoreAntiforgeryToken", controller, StringComparison.Ordinal);
+        Assert.Contains("requireLiveEvent: true", controller, StringComparison.Ordinal);
+        Assert.Contains("allowSuspendedTeam: true", controller, StringComparison.Ordinal);
+    }
+
+    private static string FindRepositoryRoot()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null)
+        {
+            if (File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) return directory.FullName;
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("Could not locate the OwlCTF repository root.");
+    }
+}
