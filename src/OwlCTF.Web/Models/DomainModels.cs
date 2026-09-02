@@ -20,7 +20,7 @@ public sealed record AdminManagedChallengeRecord(Guid Id, string Title, string S
 public sealed record AdminSubmissionLogRecord(
     long Id, Guid ChallengeId, string ChallengeTitle, Guid TeamId, string TeamName, string? CountryCode,
     Guid UserId, string Username, string SubmittedFlag, bool IsCorrect, string? IpAddress, DateTime SubmittedAtUtc,
-    Guid? CheatIncidentId, Guid? FlagOwnerTeamId, string? FlagOwnerTeamName, Guid? FlagOwnerChallengeId,
+    string? CheatIncidentId, string? FlagOwnerTeamId, string? FlagOwnerTeamName, string? FlagOwnerChallengeId,
     string? FlagOwnerChallengeTitle, bool AutoBanApplied, DateTime? ManualBanAtUtc, bool SubmittingTeamIsBanned);
 public sealed record AdminSubmissionLogSummary(long Total, long Correct, long Incorrect, long CrossTeam);
 public sealed record AdminSubmissionLogPage(IReadOnlyList<AdminSubmissionLogRecord> Attempts, long MatchCount, AdminSubmissionLogSummary Summary);

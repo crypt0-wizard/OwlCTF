@@ -712,9 +712,9 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
 
             SELECT a.Id,c.Id ChallengeId,c.Title ChallengeTitle,t.Id TeamId,t.Name TeamName,t.CountryCode,
               u.Id UserId,u.Username,COALESCE(a.SubmittedFlag,'') SubmittedFlag,a.IsCorrect,
-              a.IpAddress,a.SubmittedAtUtc,i.Id CheatIncidentId,
-              owner.Id FlagOwnerTeamId,owner.Name FlagOwnerTeamName,
-              ownerChallenge.Id FlagOwnerChallengeId,ownerChallenge.Title FlagOwnerChallengeTitle,
+              a.IpAddress,a.SubmittedAtUtc,CAST(i.Id AS CHAR) CheatIncidentId,
+              CAST(owner.Id AS CHAR) FlagOwnerTeamId,owner.Name FlagOwnerTeamName,
+              CAST(ownerChallenge.Id AS CHAR) FlagOwnerChallengeId,ownerChallenge.Title FlagOwnerChallengeTitle,
               COALESCE(i.AutoBanApplied,FALSE) AutoBanApplied,i.ManualBanAtUtc,
               t.IsBanned SubmittingTeamIsBanned
             FROM SubmissionAttempts a

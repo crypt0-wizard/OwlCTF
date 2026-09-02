@@ -158,12 +158,15 @@ public sealed class InstancePanelTests
         var root = FindRepositoryRoot();
         var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Admin", "SubmissionLogs.cshtml"));
         var migration = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "Migrations", "202609020001_LinkCheatIncidentsToSubmissions.cs"));
+        var data = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
 
         Assert.Contains("Cross-team flag", page, StringComparison.Ordinal);
         Assert.Contains("FlagOwnerTeamName", page, StringComparison.Ordinal);
         Assert.Contains("FlagOwnerChallengeTitle", page, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"BanTeamFromIncident\"", page, StringComparison.Ordinal);
         Assert.Contains("SubmissionAttemptId", migration, StringComparison.Ordinal);
+        Assert.Contains("CAST(i.Id AS CHAR) CheatIncidentId", data, StringComparison.Ordinal);
+        Assert.Contains("CAST(owner.Id AS CHAR) FlagOwnerTeamId", data, StringComparison.Ordinal);
     }
 
     private static string FindRepositoryRoot()

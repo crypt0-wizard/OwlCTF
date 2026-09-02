@@ -91,20 +91,21 @@
             <td><a asp-controller="Directory" asp-action="Member" asp-route-id="@attempt.UserId">@attempt.Username</a></td>
             <td>@if (string.IsNullOrEmpty(attempt.SubmittedFlag)) { <span class="text-body-secondary">Not captured</span> } else { <code class="submission-flag" dir="ltr">@attempt.SubmittedFlag</code> }</td>
             <td>
-              @if (attempt.CheatIncidentId is Guid incidentId)
+              @if (!string.IsNullOrWhiteSpace(attempt.CheatIncidentId))
               {
+                var incidentId = attempt.CheatIncidentId;
                 <div class="text-danger fw-semibold">Cross-team flag</div>
                 <div class="small mt-1">
                   Belonged to
-                  @if (attempt.FlagOwnerTeamId is Guid ownerTeamId && !string.IsNullOrWhiteSpace(attempt.FlagOwnerTeamName))
-                  { <a asp-controller="Directory" asp-action="Team" asp-route-id="@ownerTeamId">@attempt.FlagOwnerTeamName</a> }
+                  @if (!string.IsNullOrWhiteSpace(attempt.FlagOwnerTeamId) && !string.IsNullOrWhiteSpace(attempt.FlagOwnerTeamName))
+                  { <a asp-controller="Directory" asp-action="Team" asp-route-id="@attempt.FlagOwnerTeamId">@attempt.FlagOwnerTeamName</a> }
                   else
                   { <span>an unavailable team</span> }
                 </div>
                 <div class="small">
                   Issued for
-                  @if (attempt.FlagOwnerChallengeId is Guid ownerChallengeId && !string.IsNullOrWhiteSpace(attempt.FlagOwnerChallengeTitle))
-                  { <a asp-controller="Challenges" asp-action="Detail" asp-route-id="@ownerChallengeId">@attempt.FlagOwnerChallengeTitle</a> }
+                  @if (!string.IsNullOrWhiteSpace(attempt.FlagOwnerChallengeId) && !string.IsNullOrWhiteSpace(attempt.FlagOwnerChallengeTitle))
+                  { <a asp-controller="Challenges" asp-action="Detail" asp-route-id="@attempt.FlagOwnerChallengeId">@attempt.FlagOwnerChallengeTitle</a> }
                   else
                   { <span>an unavailable challenge</span> }
                 </div>
