@@ -46,6 +46,8 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 });
 builder.Services.AddSingleton<AppDb>();
 builder.Services.AddSingleton<FlagHasher>();
+builder.Services.AddSingleton<RegexFlagMatcher>();
+builder.Services.AddSingleton<ChallengeCategoryService>();
 builder.Services.AddSingleton<JoinCodeProtector>();
 builder.Services.AddSingleton<FirstBloodWebhookProtector>();
 builder.Services.AddSingleton<FileStorage>();

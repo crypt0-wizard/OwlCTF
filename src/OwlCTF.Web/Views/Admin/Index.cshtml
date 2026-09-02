@@ -5,6 +5,8 @@
   var hasCustomNavbarLogo = !string.IsNullOrWhiteSpace(Model.Settings.NavbarLogoPath)
     && Model.Settings.NavbarLogoPath != BrandingStorage.DefaultLogoPath
     && Model.Settings.NavbarLogoPath != BrandingStorage.AdaptiveLogoPath;
+  var hasCustomFavicon = !string.IsNullOrWhiteSpace(Model.Settings.FaviconPath)
+    && Model.Settings.FaviconPath != BrandingStorage.DefaultFaviconPath;
 }
 <main><div class="container">
   <h1 class="welcome-heading mb-1">Platform management</h1>
@@ -78,7 +80,7 @@
             <div class="form-text">PNG or ICO is recommended. Use a square image up to 1 MB.</div>
             <div class="d-flex flex-wrap gap-2 mt-3">
               <button class="btn btn-owlctf btn-sm" type="submit">Upload favicon</button>
-              @if (Model.Settings.FaviconPath != BrandingStorage.DefaultFaviconPath)
+              @if (!hasCustomFavicon && Model.Settings.FaviconPath != BrandingStorage.DefaultFaviconPath)
               { <button class="btn btn-outline-secondary btn-sm" type="submit" form="defaultFavicon">Restore OwlCTF favicon</button> }
             </div>
           </form>

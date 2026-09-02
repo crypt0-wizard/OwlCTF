@@ -1,6 +1,8 @@
 using System.ComponentModel.DataAnnotations;
+using System.Security.Claims;
 using System.Text.Encodings.Web;
 using Microsoft.AspNetCore.DataProtection;
+using OwlCTF.Extensions;
 using OwlCTF.Models;
 using OwlCTF.Services;
 
@@ -149,6 +151,27 @@ public sealed class TeamRulesTests
         var input = new TeamSuspensionInput { Suspended = true, Reason = new string('x', 501) };
 
         Assert.NotEmpty(Validate(input));
+    }
+
+    [Fact]
+    public void AuthenticatedUserIdIsReadFromThePlatformClaim()
+    {
+        var expected = Guid.NewGuid();
+        var principal = new ClaimsPrincipal(new ClaimsIdentity([new Claim("owlctf:user_id", expected.ToString())], "test"));
+
+        Assert.Equal(expected, principal.UserId());
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("not-a-guid")]
+    public void MissingOrMalformedPlatformUserIdIsRejected(string? value)
+    {
+        var claims = value is null ? Array.Empty<Claim>() : [new Claim("owlctf:user_id", value)];
+        var principal = new ClaimsPrincipal(new ClaimsIdentity(claims, "test"));
+
+        Assert.Throws<UnauthorizedAccessException>(() => principal.UserId());
     }
 
     private static List<ValidationResult> Validate(object input)

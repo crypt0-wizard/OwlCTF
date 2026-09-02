@@ -54,12 +54,14 @@ public sealed class ChallengeInput
     [Required, RegularExpression("^[a-z0-9]+(?:-[a-z0-9]+)*$"), StringLength(140)] public string Slug { get; set; } = "";
     [Required, StringLength(30_000)] public string Description { get; set; } = "";
     [Required, StringLength(100)] public string Author { get; set; } = "";
-    [Required, Display(Name = "Category"), StringLength(40)] public string CategoryKey { get; set; } = OwlCTF.Services.ChallengeCategoryCatalog.DefaultKey;
+    [Required, Display(Name = "Category"), StringLength(ChallengeCategoryPolicy.MaximumKeyLength)] public string CategoryKey { get; set; } = ChallengeCategoryCatalog.DefaultKey;
+    [StringLength(ChallengeCategoryPolicy.MaximumNameLength), Display(Name = "Custom category name")] public string? CustomCategoryName { get; set; }
     [StringLength(255), Display(Name = "Tags")] public string? Tags { get; set; }
     [Range(1, 100_000), Display(Name = "Initial value")] public int Initial { get; set; } = 100;
     [Range(1, 100_000), Display(Name = "Minimum value")] public int Minimum { get; set; } = 100;
     [Range(0, 100_000), Display(Name = "Decay solves")] public int Decay { get; set; }
     [StringLength(500)] public string? Flag { get; set; }
+    [Required, RegularExpression("^(exact|regex)$"), Display(Name = "Flag matching")] public string FlagMatchMode { get; set; } = "exact";
     [Display(Name = "Visible to players")] public bool IsVisible { get; set; }
     [Display(Name = "Enable per-team Docker instance")] public bool DynamicInstanceEnabled { get; set; }
     [StringLength(255)] public string? DockerImage { get; set; }

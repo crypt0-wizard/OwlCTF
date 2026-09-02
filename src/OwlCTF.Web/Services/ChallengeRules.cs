@@ -1,10 +1,11 @@
 namespace OwlCTF.Services;
 
-public sealed record ChallengeCategory(string Key, string Name, string IconClass);
+public sealed record ChallengeCategory(string Key, string Name, string IconClass, bool IsBuiltIn = true);
 
 public static class ChallengeCategoryCatalog
 {
     public const string DefaultKey = "reverse-engineering";
+    public const string CustomIconClass = "fa-solid fa-shapes";
 
     public static IReadOnlyList<ChallengeCategory> All { get; } =
     [
@@ -27,6 +28,101 @@ public static class ChallengeCategoryCatalog
 
     public static ChallengeCategory Get(string? key) =>
         All.FirstOrDefault(category => category.Key.Equals(key, StringComparison.Ordinal)) ?? All[0];
+
+    public static ChallengeCategory Resolve(string? key, IReadOnlyList<ChallengeCategory> categories) =>
+        categories.FirstOrDefault(category => category.Key.Equals(key, StringComparison.Ordinal)) ?? Get(key);
+}
+
+public static class ChallengeCategoryPolicy
+{
+    public const int MaximumKeyLength = 40;
+    public const int MaximumNameLength = 60;
+
+    public static bool IsValidKey(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || value.Length > MaximumKeyLength || value[0] == '-' || value[^1] == '-') return false;
+        var previousWasHyphen = false;
+        foreach (var character in value)
+        {
+            if (character == '-')
+            {
+                if (previousWasHyphen) return false;
+                previousWasHyphen = true;
+                continue;
+            }
+            if (!char.IsAsciiLetterOrDigit(character) || char.IsAsciiLetterUpper(character)) return false;
+            previousWasHyphen = false;
+        }
+        return true;
+    }
+
+    public static bool IsValidName(string? value) =>
+        !string.IsNullOrWhiteSpace(value)
+        && value.Length is >= 2 and <= MaximumNameLength
+        && !value.Any(char.IsControl);
+
+    public static string CreateKey(string name)
+    {
+        var key = new List<char>(Math.Min(name.Length, MaximumKeyLength));
+        var separatorPending = false;
+        foreach (var character in name.Trim().ToLowerInvariant())
+        {
+            if (char.IsAsciiLetterOrDigit(character))
+            {
+                if (separatorPending && key.Count > 0 && key.Count < MaximumKeyLength) key.Add('-');
+                if (key.Count >= MaximumKeyLength) break;
+                key.Add(character);
+                separatorPending = false;
+            }
+            else separatorPending = key.Count > 0;
+        }
+        return new string([.. key]).TrimEnd('-');
+    }
+}
+
+public sealed class ChallengeCategoryService(OwlCTF.Data.AppDb db)
+{
+    public async Task<IReadOnlyList<ChallengeCategory>> GetAllAsync(CancellationToken ct)
+    {
+        var custom = await db.GetCustomChallengeCategoriesAsync(ct);
+        return [.. ChallengeCategoryCatalog.All, .. custom.Select(category => new ChallengeCategory(category.Key, category.Name, ChallengeCategoryCatalog.CustomIconClass, false))];
+    }
+
+    public async Task<bool> IsValidAsync(string? key, CancellationToken ct) =>
+        ChallengeCategoryCatalog.IsValid(key)
+        || (!string.IsNullOrWhiteSpace(key) && await db.CustomChallengeCategoryExistsAsync(key, ct));
+
+    public async Task<ChallengeCategory?> FindAsync(string? value, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return null;
+        return (await GetAllAsync(ct)).FirstOrDefault(category =>
+            category.Key.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase)
+            || category.Name.Equals(value.Trim(), StringComparison.OrdinalIgnoreCase));
+    }
+
+    public async Task<ChallengeCategory?> ResolveOrCreateAsync(string? value, CancellationToken ct)
+    {
+        var name = value?.Trim();
+        var existing = await FindAsync(name, ct);
+        if (existing is not null) return existing;
+        if (!ChallengeCategoryPolicy.IsValidName(name)) return null;
+        var baseKey = ChallengeCategoryPolicy.CreateKey(name!);
+        if (!ChallengeCategoryPolicy.IsValidKey(baseKey)) return null;
+
+        for (var attempt = 1; attempt <= 100; attempt++)
+        {
+            var suffix = attempt == 1 ? "" : "-" + attempt;
+            var stemLength = Math.Min(baseKey.Length, ChallengeCategoryPolicy.MaximumKeyLength - suffix.Length);
+            var key = baseKey[..stemLength].TrimEnd('-') + suffix;
+            var categories = await GetAllAsync(ct);
+            var sameName = categories.FirstOrDefault(category => category.Name.Equals(name, StringComparison.OrdinalIgnoreCase));
+            if (sameName is not null) return sameName;
+            if (categories.Any(category => category.Key.Equals(key, StringComparison.OrdinalIgnoreCase))) continue;
+            if (await db.TryAddCustomChallengeCategoryAsync(key, name!, ct))
+                return new ChallengeCategory(key, name!, ChallengeCategoryCatalog.CustomIconClass, false);
+        }
+        return null;
+    }
 }
 
 public static class ChallengeTagPolicy

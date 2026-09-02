@@ -3,6 +3,7 @@
 @{
   ViewData["Title"] = Model.Id is null ? "New challenge" : "Edit challenge";
   var files = ViewBag.Files as IReadOnlyList<ChallengeFileRecord> ?? Array.Empty<ChallengeFileRecord>();
+  var categories = ViewBag.Categories as IReadOnlyList<ChallengeCategory> ?? ChallengeCategoryCatalog.All;
   var cspNonce = Context.Items["CspNonce"] as string;
 }
 <main><div class="container">
@@ -29,7 +30,13 @@
             <div class="col-12"><label asp-for="Title" class="form-label"></label><input asp-for="Title" class="form-control" placeholder="A short, recognizable challenge name"><span asp-validation-for="Title" class="text-danger"></span></div>
             <div class="col-md-6"><label asp-for="Slug" class="form-label"></label><input asp-for="Slug" class="form-control" placeholder="crack-the-binary"><span asp-validation-for="Slug" class="text-danger"></span><div class="form-text">Use lowercase letters, numbers and hyphens.</div></div>
             <div class="col-md-6"><label asp-for="Author" class="form-label"></label><input asp-for="Author" class="form-control" placeholder="Challenge author or team"><span asp-validation-for="Author" class="text-danger"></span></div>
-            <div class="col-12"><label asp-for="CategoryKey" class="form-label"></label><select asp-for="CategoryKey" class="form-select">@foreach (var category in ChallengeCategoryCatalog.All) { <option value="@category.Key">@category.Name</option> }</select><span asp-validation-for="CategoryKey" class="text-danger"></span><div class="form-text">The matching category icon is added automatically.</div></div>
+            <div class="col-12">
+              <label asp-for="CategoryKey" class="form-label"></label>
+              <select asp-for="CategoryKey" class="form-select">@foreach (var category in categories) { <option value="@category.Key">@category.Name</option> }<option value="__custom__">Custom category</option></select>
+              <span asp-validation-for="CategoryKey" class="text-danger"></span>
+              <div id="customCategoryField" class="mt-2" hidden="@(Model.CategoryKey != "__custom__")"><label asp-for="CustomCategoryName" class="form-label"></label><input asp-for="CustomCategoryName" class="form-control" placeholder="Cloud Security" autocomplete="off"><span asp-validation-for="CustomCategoryName" class="text-danger"></span></div>
+              <div class="form-text">Choose a category or select Custom category to add one here. Custom categories receive a clean generic icon.</div>
+            </div>
             <div class="col-12"><label asp-for="Tags" class="form-label"></label><input asp-for="Tags" class="form-control" placeholder="beginner, linux, web-101"><span asp-validation-for="Tags" class="text-danger"></span><div class="form-text">Optional. Add up to @ChallengeTagPolicy.MaximumTags comma-separated tags using lowercase letters, numbers and hyphens.</div></div>
             <div class="col-md-4"><label asp-for="Initial" class="form-label"></label><input asp-for="Initial" class="form-control"><span asp-validation-for="Initial" class="text-danger"></span><div class="form-text">Value before any eligible solve.</div></div>
             <div class="col-md-4"><label asp-for="Minimum" class="form-label"></label><input asp-for="Minimum" class="form-control"><span asp-validation-for="Minimum" class="text-danger"></span><div class="form-text">Lowest value after decay.</div></div>
@@ -40,7 +47,10 @@
         <section class="tab-pane fade" id="content-pane" role="tabpanel" aria-labelledby="content-tab" tabindex="0">
           <div class="challenge-tab-heading"><h2>Content and solution flag</h2><p>Give players what they need and set the static flag.</p></div>
           <div><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="11" placeholder="Explain the goal and include connection details or useful hints."></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
-          <div class="mt-3"><label asp-for="Flag" class="form-label"></label><input asp-for="Flag" class="form-control" autocomplete="new-password" placeholder="@(Model.Id is null ? "Required for static challenges" : "Leave blank to keep the current flag")"><span asp-validation-for="Flag" class="text-danger"></span><div class="form-text">Docker challenges receive a unique per-team flag. This field is required only for new static challenges.</div></div>
+          <div class="row g-3 mt-1">
+            <div class="col-md-4"><label asp-for="FlagMatchMode" class="form-label"></label><select asp-for="FlagMatchMode" class="form-select"><option value="exact">Exact flag</option><option value="regex">Regular expression</option></select><span asp-validation-for="FlagMatchMode" class="text-danger"></span></div>
+            <div class="col-md-8"><label asp-for="Flag" class="form-label" id="flagValueLabel">Flag</label><input asp-for="Flag" class="form-control font-monospace" autocomplete="new-password" placeholder="@(Model.Id is null ? "Required for static challenges" : "Leave blank to keep the current exact flag")"><span asp-validation-for="Flag" class="text-danger"></span><div class="form-text" id="flagMatchHelp">Exact flags are securely hashed. Docker challenges receive a unique per-team flag.</div></div>
+          </div>
         </section>
 
         <section class="tab-pane fade" id="docker-pane" role="tabpanel" aria-labelledby="docker-tab" tabindex="0">
@@ -98,6 +108,13 @@
     const dockerToggle = document.getElementById('DynamicInstanceEnabled');
     const dockerSettings = document.getElementById('dockerSettings');
     const dockerModeStatus = document.getElementById('dockerModeStatus');
+    const flagMatchMode = document.getElementById('FlagMatchMode');
+    const flagInput = document.getElementById('Flag');
+    const flagValueLabel = document.getElementById('flagValueLabel');
+    const flagMatchHelp = document.getElementById('flagMatchHelp');
+    const categorySelect = document.getElementById('CategoryKey');
+    const customCategoryField = document.getElementById('customCategoryField');
+    const customCategoryName = document.getElementById('CustomCategoryName');
 
     function syncDockerSettings() {
       const enabled = dockerToggle.checked;
@@ -106,6 +123,26 @@
     }
     dockerToggle.addEventListener('change', syncDockerSettings);
     syncDockerSettings();
+
+    function syncFlagMode() {
+      const regex = flagMatchMode.value === 'regex';
+      flagValueLabel.textContent = regex ? 'Regular expression' : 'Flag';
+      flagInput.placeholder = regex ? '^CTF\\{[A-F0-9]{32}\\}$' : '@(Model.Id is null ? "Required for static challenges" : "Leave blank to keep the current exact flag")';
+      flagMatchHelp.textContent = regex
+        ? 'The whole submitted flag must match. Matching is case-sensitive and protected by a short timeout.'
+        : 'Exact flags are securely hashed. Docker challenges receive a unique per-team flag.';
+    }
+    flagMatchMode.addEventListener('change', syncFlagMode);
+    syncFlagMode();
+
+    function syncCategoryMode() {
+      const custom = categorySelect.value === '__custom__';
+      customCategoryField.hidden = !custom;
+      customCategoryName.required = custom;
+      if (custom) customCategoryName.focus();
+    }
+    categorySelect.addEventListener('change', syncCategoryMode);
+    syncCategoryMode();
 
     const invalidField = form.querySelector('.field-validation-error');
     if (invalidField) {

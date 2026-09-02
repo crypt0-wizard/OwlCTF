@@ -1,10 +1,12 @@
 @model ChallengeDetailViewModel
 @using OwlCTF.Services
 @using System.Text.Json
+@inject ChallengeCategoryService ChallengeCategories
 @{
   ViewData["Title"] = Model.Challenge.Title;
   var cspNonce = Context.Items["CspNonce"] as string;
-  var category = ChallengeCategoryCatalog.Get(Model.Challenge.CategoryKey);
+  var categories = await ChallengeCategories.GetAllAsync(Context.RequestAborted);
+  var category = ChallengeCategoryCatalog.Resolve(Model.Challenge.CategoryKey, categories);
   var countries = CountryCatalog.All.ToDictionary(country => country.Code, StringComparer.OrdinalIgnoreCase);
   var flagPlaceholder = $"{Model.FlagPrefix}{{...}}";
 }

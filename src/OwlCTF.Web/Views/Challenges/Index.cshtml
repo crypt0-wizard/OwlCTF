@@ -1,6 +1,10 @@
 @model ChallengesViewModel
 @using OwlCTF.Services
-@{ ViewData["Title"] = "Challenges"; }
+@inject ChallengeCategoryService ChallengeCategories
+@{
+  ViewData["Title"] = "Challenges";
+  var categories = await ChallengeCategories.GetAllAsync(Context.RequestAborted);
+}
 <main><div class="container">
   <h1 class="welcome-heading">Challenges</h1>
   @if (Model.State.Phase == CtfPhase.Upcoming)
@@ -42,9 +46,9 @@
   </form>
   @if (Model.Challenges.Count == 0)
   { <div class="panel mt-4"><div class="panel-body text-center">@(Model.SelectedTag is null ? "No challenges are available yet." : $"No challenges use the {Model.SelectedTag} tag.")</div></div> }
-  @foreach (var category in ChallengeCategoryCatalog.All)
+  @foreach (var category in categories)
   {
-    var categoryChallenges = Model.Challenges.Where(challenge => ChallengeCategoryCatalog.Get(challenge.CategoryKey).Key == category.Key).ToArray();
+    var categoryChallenges = Model.Challenges.Where(challenge => challenge.CategoryKey == category.Key).ToArray();
     if (categoryChallenges.Length > 0)
     {
       <section class="mt-4" aria-labelledby="category-@category.Key">

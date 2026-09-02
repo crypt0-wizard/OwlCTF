@@ -54,9 +54,12 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
           Id CHAR(36) NOT NULL PRIMARY KEY, Title VARCHAR(120) NOT NULL, Slug VARCHAR(140) NOT NULL UNIQUE,
           Description TEXT NOT NULL, Author VARCHAR(100) NOT NULL, CategoryKey VARCHAR(40) NOT NULL DEFAULT 'reverse-engineering',
           Points INT NOT NULL, Initial INT NOT NULL, Minimum INT NOT NULL, Decay INT NOT NULL DEFAULT 0,
-          CurrentValue INT NOT NULL, FlagHash CHAR(64) NOT NULL,
+          CurrentValue INT NOT NULL, FlagHash CHAR(64) NOT NULL, FlagRegex VARCHAR(500) NULL,
           IsVisible BOOLEAN NOT NULL DEFAULT FALSE, CreatedAtUtc DATETIME(6) NOT NULL, UpdatedAtUtc DATETIME(6) NOT NULL,
           INDEX IX_Challenges_Visible (IsVisible, CurrentValue)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+        CREATE TABLE IF NOT EXISTS CustomChallengeCategories (
+          `Key` VARCHAR(40) NOT NULL PRIMARY KEY, Name VARCHAR(60) NOT NULL UNIQUE, CreatedAtUtc DATETIME(6) NOT NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
         CREATE TABLE IF NOT EXISTS ChallengeTags (
           ChallengeId CHAR(36) NOT NULL, Tag VARCHAR(24) NOT NULL, SortOrder TINYINT UNSIGNED NOT NULL,
@@ -167,6 +170,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         ALTER TABLE Challenges ADD COLUMN IF NOT EXISTS Minimum INT NOT NULL DEFAULT 100;
         ALTER TABLE Challenges ADD COLUMN IF NOT EXISTS Decay INT NOT NULL DEFAULT 0;
         ALTER TABLE Challenges ADD COLUMN IF NOT EXISTS CurrentValue INT NOT NULL DEFAULT 100;
+        ALTER TABLE Challenges ADD COLUMN IF NOT EXISTS FlagRegex VARCHAR(500) NULL;
         ALTER TABLE Solves ADD COLUMN IF NOT EXISTS ValueAwarded INT NOT NULL DEFAULT 0;
         ALTER TABLE SubmissionAttempts ADD COLUMN IF NOT EXISTS SubmittedFlag VARCHAR(500) NOT NULL DEFAULT '';
         ALTER TABLE SubmissionAttempts ADD COLUMN IF NOT EXISTS IpAddress VARCHAR(45) NULL;
@@ -177,7 +181,8 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         ALTER TABLE CheatIncidents ADD UNIQUE INDEX IF NOT EXISTS UX_CheatIncidents_SubmissionAttempt (SubmissionAttemptId);
         ALTER TABLE FirstBloodAnnouncements ADD COLUMN IF NOT EXISTS ClaimExpiresAtUtc DATETIME(6) NULL;
         UPDATE Challenges SET CategoryKey='reverse-engineering'
-        WHERE CategoryKey NOT IN ('reverse-engineering','web','cryptography','pwn','forensics','osint','steganography','mobile','hardware','blockchain','programming','miscellaneous');
+        WHERE CategoryKey NOT IN ('reverse-engineering','web','cryptography','pwn','forensics','osint','steganography','mobile','hardware','blockchain','programming','miscellaneous')
+          AND CategoryKey NOT IN (SELECT `Key` FROM CustomChallengeCategories);
         UPDATE Challenges SET Initial=Points,Minimum=Points,CurrentValue=Points
         WHERE Decay=0 AND Initial=100 AND Minimum=100 AND CurrentValue=100 AND Points<>100;
         UPDATE Solves SET ValueAwarded=PointsAwarded WHERE ValueAwarded=0 AND PointsAwarded>0;
@@ -504,6 +509,32 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         return rows.AsList();
     }
 
+    public async Task<IReadOnlyList<CustomChallengeCategoryRecord>> GetCustomChallengeCategoriesAsync(CancellationToken ct)
+    {
+        await using var db = Open();
+        return (await db.QueryAsync<CustomChallengeCategoryRecord>(new CommandDefinition(
+            "SELECT `Key`,Name FROM CustomChallengeCategories ORDER BY Name,`Key`", cancellationToken: ct))).AsList();
+    }
+
+    public async Task<bool> CustomChallengeCategoryExistsAsync(string key, CancellationToken ct)
+    {
+        await using var db = Open();
+        return await db.ExecuteScalarAsync<long>(new CommandDefinition(
+            "SELECT COUNT(*) FROM CustomChallengeCategories WHERE `Key`=@key", new { key }, cancellationToken: ct)) == 1;
+    }
+
+    public async Task<bool> TryAddCustomChallengeCategoryAsync(string key, string name, CancellationToken ct)
+    {
+        await using var db = Open();
+        try
+        {
+            return await db.ExecuteAsync(new CommandDefinition(
+                "INSERT INTO CustomChallengeCategories (`Key`,Name,CreatedAtUtc) VALUES (@key,@name,UTC_TIMESTAMP(6))",
+                new { key, name }, cancellationToken: ct)) == 1;
+        }
+        catch (MySqlException ex) when (ex.Number == 1062) { return false; }
+    }
+
     public async Task<IReadOnlyList<AdminManagedChallengeRecord>> GetManagedChallengesAsync(CancellationToken ct)
     {
         await using var db = Open();
@@ -595,7 +626,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     public async Task<ChallengeSecret?> GetChallengeSecretAsync(Guid id, CancellationToken ct)
     {
         await using var db = Open();
-        return await db.QuerySingleOrDefaultAsync<ChallengeSecret>(new CommandDefinition("SELECT FlagHash,CurrentValue,IsVisible FROM Challenges WHERE Id=@id", new { id }, cancellationToken: ct));
+        return await db.QuerySingleOrDefaultAsync<ChallengeSecret>(new CommandDefinition("SELECT FlagHash,FlagRegex,CurrentValue,IsVisible FROM Challenges WHERE Id=@id", new { id }, cancellationToken: ct));
     }
 
     public async Task<SubmissionRecordResult> RecordSubmissionAsync(Guid challengeId, Guid teamId, Guid userId, string submittedFlag, string? ipAddress, bool correct, CancellationToken ct)
@@ -876,7 +907,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         return rows.AsList();
     }
 
-    public async Task<Guid> SaveChallengeAsync(Guid? id, string title, string slug, string description, string author, string categoryKey, IReadOnlyList<string> tags, int initial, int minimum, int decay, string flagHash, bool visible, CancellationToken ct)
+    public async Task<Guid> SaveChallengeAsync(Guid? id, string title, string slug, string description, string author, string categoryKey, IReadOnlyList<string> tags, int initial, int minimum, int decay, string flagHash, string? flagRegex, bool visible, CancellationToken ct)
     {
         var challengeId = id ?? Guid.NewGuid(); await using var db = Open(); await db.OpenAsync(ct);
         await using var tx = await db.BeginTransactionAsync(System.Data.IsolationLevel.ReadCommitted, ct);
@@ -890,12 +921,12 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             """, new { challengeId }, tx, cancellationToken: ct));
         var currentValue = scoring.Calculate(initial, minimum, decay, solveCount);
         await db.ExecuteAsync(new CommandDefinition("""
-            INSERT INTO Challenges (Id,Title,Slug,Description,Author,CategoryKey,Points,Initial,Minimum,Decay,CurrentValue,FlagHash,IsVisible,CreatedAtUtc,UpdatedAtUtc)
-            VALUES (@challengeId,@title,@slug,@description,@author,@categoryKey,@currentValue,@initial,@minimum,@decay,@currentValue,@flagHash,@visible,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))
+            INSERT INTO Challenges (Id,Title,Slug,Description,Author,CategoryKey,Points,Initial,Minimum,Decay,CurrentValue,FlagHash,FlagRegex,IsVisible,CreatedAtUtc,UpdatedAtUtc)
+            VALUES (@challengeId,@title,@slug,@description,@author,@categoryKey,@currentValue,@initial,@minimum,@decay,@currentValue,@flagHash,@flagRegex,@visible,UTC_TIMESTAMP(6),UTC_TIMESTAMP(6))
             ON DUPLICATE KEY UPDATE Title=@title,Slug=@slug,Description=@description,Author=@author,CategoryKey=@categoryKey,
               Points=@currentValue,Initial=@initial,Minimum=@minimum,Decay=@decay,CurrentValue=@currentValue,
-              FlagHash=@flagHash,IsVisible=@visible,UpdatedAtUtc=UTC_TIMESTAMP(6)
-            """, new { challengeId, title, slug, description, author, categoryKey, initial, minimum, decay, currentValue, flagHash, visible }, tx, cancellationToken: ct));
+              FlagHash=@flagHash,FlagRegex=@flagRegex,IsVisible=@visible,UpdatedAtUtc=UTC_TIMESTAMP(6)
+            """, new { challengeId, title, slug, description, author, categoryKey, initial, minimum, decay, currentValue, flagHash, flagRegex, visible }, tx, cancellationToken: ct));
         await db.ExecuteAsync(new CommandDefinition(
             "DELETE FROM ChallengeTags WHERE ChallengeId=@challengeId",
             new { challengeId }, tx, cancellationToken: ct));

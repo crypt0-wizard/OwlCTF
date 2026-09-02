@@ -1,8 +1,10 @@
 @model PublicTeamViewModel
 @using OwlCTF.Services
+@inject ChallengeCategoryService ChallengeCategories
 @{
   ViewData["Title"] = Model.Team.Name;
   var country = CountryCatalog.All.FirstOrDefault(item => item.Code == Model.Team.CountryCode);
+  var categories = await ChallengeCategories.GetAllAsync(Context.RequestAborted);
 }
 <main><div class="container">
   <a asp-controller="Standings" asp-action="Index" class="text-decoration-none">← Standings</a>
@@ -48,7 +50,7 @@
     {
       <div class="table-responsive"><table class="table table-hover align-middle mb-0">
         <thead><tr><th>Challenge</th><th>Category</th><th>Solved by</th><th>Points</th><th>Solved at (local time)</th></tr></thead>
-        <tbody>@foreach (var solve in Model.Solves) { var category = ChallengeCategoryCatalog.Get(solve.CategoryKey); <tr><td>@solve.ChallengeTitle</td><td><span class="category-label"><span class="category-icon-sm"><i class="@category.IconClass" aria-hidden="true"></i></span><span>@category.Name</span></span></td><td><a asp-controller="Directory" asp-action="Member" asp-route-id="@solve.SolverUserId">@solve.SolverUsername</a></td><td>@solve.PointsAwarded</td><td><time data-local-time datetime="@TimeDisplay.UtcIso(solve.SolvedAtUtc)">@solve.SolvedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</time></td></tr> }</tbody>
+        <tbody>@foreach (var solve in Model.Solves) { var category = ChallengeCategoryCatalog.Resolve(solve.CategoryKey, categories); <tr><td>@solve.ChallengeTitle</td><td><span class="category-label"><span class="category-icon-sm"><i class="@category.IconClass" aria-hidden="true"></i></span><span>@category.Name</span></span></td><td><a asp-controller="Directory" asp-action="Member" asp-route-id="@solve.SolverUserId">@solve.SolverUsername</a></td><td>@solve.PointsAwarded</td><td><time data-local-time datetime="@TimeDisplay.UtcIso(solve.SolvedAtUtc)">@solve.SolvedAtUtc.ToString("yyyy-MM-dd HH:mm:ss")</time></td></tr> }</tbody>
       </table></div>
     }
   </div>

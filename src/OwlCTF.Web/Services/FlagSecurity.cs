@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Options;
 using OwlCTF.Options;
 
@@ -20,6 +21,47 @@ public sealed class FlagHasher(IOptions<SecurityOptions> options)
         catch (FormatException) { return false; }
     }
     internal static string Normalize(string value) => value.Trim();
+}
+
+public sealed class RegexFlagMatcher
+{
+    public const int MaximumPatternLength = 500;
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromMilliseconds(200);
+
+    public bool TryValidate(string? pattern, out string? error)
+    {
+        error = null;
+        if (string.IsNullOrWhiteSpace(pattern))
+        {
+            error = "Enter a regular expression.";
+            return false;
+        }
+        if (pattern.Length > MaximumPatternLength)
+        {
+            error = $"The regular expression must be {MaximumPatternLength} characters or fewer.";
+            return false;
+        }
+        try
+        {
+            _ = Build(pattern);
+            return true;
+        }
+        catch (ArgumentException ex)
+        {
+            error = "Invalid regular expression: " + ex.Message;
+            return false;
+        }
+    }
+
+    public bool Verify(string submitted, string? pattern)
+    {
+        if (submitted.Length > 500 || !TryValidate(pattern, out _)) return false;
+        try { return Build(pattern!).IsMatch(FlagHasher.Normalize(submitted)); }
+        catch (RegexMatchTimeoutException) { return false; }
+    }
+
+    private static Regex Build(string pattern) =>
+        new("\\A(?:" + pattern + ")\\z", RegexOptions.CultureInvariant, MatchTimeout);
 }
 
 public static class FlagPrefixPolicy

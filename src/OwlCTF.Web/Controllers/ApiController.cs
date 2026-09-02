@@ -7,7 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 namespace OwlCTF.Controllers;
 
 [ApiController, Route("api/v1")]
-public sealed class ApiController(AppDb db, PlatformService platform, ScoreboardService scoreboard) : ControllerBase
+public sealed class ApiController(AppDb db, PlatformService platform, ScoreboardService scoreboard, ChallengeCategoryService challengeCategories) : ControllerBase
 {
     [HttpGet("platform")]
     public async Task<IActionResult> Platform(CancellationToken ct)
@@ -22,7 +22,8 @@ public sealed class ApiController(AppDb db, PlatformService platform, Scoreboard
         OwlCTF.Models.TeamRecord? team = null;
         if (User.Identity?.IsAuthenticated == true) team = await db.GetTeamForUserAsync(User.UserId(), ct);
         var rows = await db.GetChallengesAsync(team?.Id, User.IsInRole("Admin"), ct);
-        return Ok(rows.Select(c => new { c.Id, c.Title, c.Slug, c.Description, c.Author, c.CategoryKey, category = ChallengeCategoryCatalog.Get(c.CategoryKey).Name, c.Initial, c.Minimum, c.Decay, c.CurrentValue, points = c.CurrentValue, c.SolveCount, c.IsSolved }));
+        var categories = await challengeCategories.GetAllAsync(ct);
+        return Ok(rows.Select(c => new { c.Id, c.Title, c.Slug, c.Description, c.Author, c.CategoryKey, category = ChallengeCategoryCatalog.Resolve(c.CategoryKey, categories).Name, c.Initial, c.Minimum, c.Decay, c.CurrentValue, points = c.CurrentValue, c.SolveCount, c.IsSolved }));
     }
 
     [HttpGet("standings")]

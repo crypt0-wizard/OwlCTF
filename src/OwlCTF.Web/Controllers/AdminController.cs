@@ -12,7 +12,7 @@ using MySqlConnector;
 namespace OwlCTF.Controllers;
 
 [Authorize(Roles = "Admin"), Route("admin")]
-public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord, IFlagOwnershipStore flagOwnership) : Controller
+public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, RegexFlagMatcher regexFlags, ChallengeCategoryService challengeCategories, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord, IFlagOwnershipStore flagOwnership) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
@@ -435,7 +435,12 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
     }
 
     [HttpGet("challenges/new")]
-    public IActionResult NewChallenge() => View("ChallengeForm", new ChallengeInput { CategoryKey = ChallengeCategoryCatalog.DefaultKey });
+    public async Task<IActionResult> NewChallenge(CancellationToken ct)
+    {
+        var input = new ChallengeInput { CategoryKey = ChallengeCategoryCatalog.DefaultKey };
+        await PrepareChallengeEditorAsync(input, ct);
+        return View("ChallengeForm", input);
+    }
 
     [HttpGet("challenges")]
     public async Task<IActionResult> ManageChallenges(string? sort, string? direction, CancellationToken ct)
@@ -444,10 +449,11 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         var selectedDirection = direction == "desc" ? "desc" : "asc";
         var descending = selectedDirection == "desc";
         var challenges = await db.GetManagedChallengesAsync(ct);
+        var categories = await challengeCategories.GetAllAsync(ct);
 
         IOrderedEnumerable<AdminManagedChallengeRecord> ordered = selectedSort switch
         {
-            "category" => descending ? challenges.OrderByDescending(challenge => ChallengeCategoryCatalog.Get(challenge.CategoryKey).Name) : challenges.OrderBy(challenge => ChallengeCategoryCatalog.Get(challenge.CategoryKey).Name),
+            "category" => descending ? challenges.OrderByDescending(challenge => ChallengeCategoryCatalog.Resolve(challenge.CategoryKey, categories).Name) : challenges.OrderBy(challenge => ChallengeCategoryCatalog.Resolve(challenge.CategoryKey, categories).Name),
             "author" => descending ? challenges.OrderByDescending(challenge => challenge.Author) : challenges.OrderBy(challenge => challenge.Author),
             "points" => descending ? challenges.OrderByDescending(challenge => challenge.CurrentValue) : challenges.OrderBy(challenge => challenge.CurrentValue),
             "solves" => descending ? challenges.OrderByDescending(challenge => challenge.SolveCount) : challenges.OrderBy(challenge => challenge.SolveCount),
@@ -466,13 +472,16 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
     {
         var item = await db.GetChallengeAsync(id, null, true, ct);
         if (item is null) return NotFound();
-        ViewBag.Files = await db.GetChallengeFilesAsync(id, ct);
+        var secret = await db.GetChallengeSecretAsync(id, ct);
         await using var instanceDb = await instanceDbFactory.CreateDbContextAsync(ct);
         var config = await instanceDb.InstanceConfigs.AsNoTracking().SingleOrDefaultAsync(x => x.ChallengeId == id, ct);
-        return View("ChallengeForm", new ChallengeInput { Id = item.Id, Title = item.Title, Slug = item.Slug, Description = item.Description, Author = item.Author, CategoryKey = item.CategoryKey, Tags = string.Join(", ", item.TagList), Initial = item.Initial, Minimum = item.Minimum, Decay = item.Decay, IsVisible = item.IsVisible,
+        var input = new ChallengeInput { Id = item.Id, Title = item.Title, Slug = item.Slug, Description = item.Description, Author = item.Author, CategoryKey = item.CategoryKey, Tags = string.Join(", ", item.TagList), Initial = item.Initial, Minimum = item.Minimum, Decay = item.Decay, IsVisible = item.IsVisible,
+            FlagMatchMode = secret?.FlagRegex is null ? "exact" : "regex", Flag = secret?.FlagRegex,
             DynamicInstanceEnabled = config?.Enabled == true, DockerImage = config?.DockerImage, ContainerPort = config?.ContainerPort ?? 8080,
             InstanceTtlSeconds = config?.TtlSeconds ?? 1800, MaxInstanceRenewals = config?.MaxRenewals ?? 3,
-            InstanceNanoCpus = config?.NanoCpus ?? 500_000_000, InstanceMemoryMb = config is null ? 256 : (int)(config.MemoryBytes / 1_048_576), FlagEnvironmentVariable = config?.FlagEnvironmentVariable ?? "FLAG" });
+            InstanceNanoCpus = config?.NanoCpus ?? 500_000_000, InstanceMemoryMb = config is null ? 256 : (int)(config.MemoryBytes / 1_048_576), FlagEnvironmentVariable = config?.FlagEnvironmentVariable ?? "FLAG" };
+        await PrepareChallengeEditorAsync(input, ct);
+        return View("ChallengeForm", input);
     }
 
     [HttpPost("challenges/save")]
@@ -480,21 +489,46 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
     [RequestFormLimits(MultipartBodyLengthLimit = 262_144_000)]
     public async Task<IActionResult> SaveChallenge(ChallengeInput input, CancellationToken ct)
     {
-        if (input.Id is null && !input.DynamicInstanceEnabled && string.IsNullOrWhiteSpace(input.Flag)) ModelState.AddModelError(nameof(input.Flag), "A flag is required for a new static challenge.");
+        var existing = input.Id is { } id ? await db.GetChallengeSecretAsync(id, ct) : null;
+        if (input.Id is not null && existing is null) return NotFound();
+        var useRegex = input.FlagMatchMode == "regex";
+        var suppliedFlag = string.IsNullOrWhiteSpace(input.Flag) ? null : input.Flag.Trim();
+        var flagRegex = useRegex ? suppliedFlag ?? existing?.FlagRegex : null;
+        if (useRegex && !regexFlags.TryValidate(flagRegex, out var regexError)) ModelState.AddModelError(nameof(input.Flag), regexError!);
+        if (!useRegex && suppliedFlag is null && existing?.FlagRegex is not null) ModelState.AddModelError(nameof(input.Flag), "Enter an exact flag when switching away from regular expression matching.");
+        if (input.Id is null && !input.DynamicInstanceEnabled && suppliedFlag is null) ModelState.AddModelError(nameof(input.Flag), useRegex ? "A regular expression is required for a new static challenge." : "A flag is required for a new static challenge.");
         if (input.DynamicInstanceEnabled && string.IsNullOrWhiteSpace(input.DockerImage)) ModelState.AddModelError(nameof(input.DockerImage), "A Docker image is required for a dynamic challenge.");
         if (input.Minimum > input.Initial) ModelState.AddModelError(nameof(input.Minimum), "Minimum value cannot be greater than the initial value.");
         if (input.Files.Count > 5) ModelState.AddModelError(nameof(input.Files), "A challenge can contain at most five files per upload.");
         if (input.Files.Any(f => f.Length <= 0 || f.Length > storage.MaxFileBytes)) ModelState.AddModelError(nameof(input.Files), "Each file must contain data and fit within the size limit.");
-        if (!ChallengeCategoryCatalog.IsValid(input.CategoryKey)) ModelState.AddModelError(nameof(input.CategoryKey), "Select a valid predefined category.");
+        var customCategorySelected = input.CategoryKey == "__custom__";
+        var selectedCategory = customCategorySelected ? null : await challengeCategories.FindAsync(input.CategoryKey, ct);
+        if (customCategorySelected && !ChallengeCategoryPolicy.IsValidName(input.CustomCategoryName?.Trim()))
+            ModelState.AddModelError(nameof(input.CustomCategoryName), "Enter a clear category name from 2 to 60 characters.");
+        else if (!customCategorySelected && selectedCategory is null)
+            ModelState.AddModelError(nameof(input.CategoryKey), "Select a valid category.");
         if (!ChallengeTagPolicy.TryNormalize(input.Tags, out var normalizedTags, out var tagError)) ModelState.AddModelError(nameof(input.Tags), tagError!);
-        if (!ModelState.IsValid) return View("ChallengeForm", input);
+        if (!ModelState.IsValid)
+        {
+            await PrepareChallengeEditorAsync(input, ct);
+            return View("ChallengeForm", input);
+        }
 
-        var existing = input.Id is { } id ? await db.GetChallengeSecretAsync(id, ct) : null;
-        if (input.Id is not null && existing is null) return NotFound();
-        var flagHash = string.IsNullOrWhiteSpace(input.Flag) ? existing?.FlagHash ?? flags.Hash(Guid.NewGuid().ToString("N")) : flags.Hash(input.Flag);
+        if (customCategorySelected)
+            selectedCategory = await challengeCategories.ResolveOrCreateAsync(input.CustomCategoryName, ct);
+        if (selectedCategory is null)
+        {
+            ModelState.AddModelError(nameof(input.CategoryKey), "That category could not be created. Try another name.");
+            await PrepareChallengeEditorAsync(input, ct);
+            return View("ChallengeForm", input);
+        }
+
+        var flagHash = !useRegex && suppliedFlag is not null
+            ? flags.Hash(suppliedFlag)
+            : existing?.FlagHash ?? flags.Hash(Guid.NewGuid().ToString("N"));
         try
         {
-            var challengeId = await db.SaveChallengeAsync(input.Id, input.Title.Trim(), input.Slug.Trim(), input.Description.Trim(), input.Author.Trim(), input.CategoryKey, normalizedTags, input.Initial, input.Minimum, input.Decay, flagHash, input.IsVisible, ct);
+            var challengeId = await db.SaveChallengeAsync(input.Id, input.Title.Trim(), input.Slug.Trim(), input.Description.Trim(), input.Author.Trim(), selectedCategory.Key, normalizedTags, input.Initial, input.Minimum, input.Decay, flagHash, flagRegex, input.IsVisible, ct);
             await using (var instanceDb = await instanceDbFactory.CreateDbContextAsync(ct))
             {
                 var config = await instanceDb.InstanceConfigs.SingleOrDefaultAsync(x => x.ChallengeId == challengeId, ct);
@@ -526,8 +560,15 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         catch (MySqlException ex) when (ex.Number == 1062)
         {
             ModelState.AddModelError(nameof(input.Slug), "That slug is already in use.");
+            await PrepareChallengeEditorAsync(input, ct);
             return View("ChallengeForm", input);
         }
+    }
+
+    private async Task PrepareChallengeEditorAsync(ChallengeInput input, CancellationToken ct)
+    {
+        ViewBag.Categories = await challengeCategories.GetAllAsync(ct);
+        ViewBag.Files = input.Id is Guid id ? await db.GetChallengeFilesAsync(id, ct) : Array.Empty<ChallengeFileRecord>();
     }
 
     [HttpPost("challenges/{id:guid}/archive")]

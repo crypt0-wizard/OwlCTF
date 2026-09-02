@@ -1,6 +1,10 @@
 @model AdminChallengesViewModel
 @using OwlCTF.Services
-@{ ViewData["Title"] = "Manage challenges"; }
+@inject ChallengeCategoryService ChallengeCategories
+@{
+  ViewData["Title"] = "Manage challenges";
+  var categories = await ChallengeCategories.GetAllAsync(Context.RequestAborted);
+}
 <main><div class="container">
   <a asp-action="Index" class="text-decoration-none">← Administration</a>
   <div class="mt-3">
@@ -52,7 +56,7 @@
         { <tr><td colspan="9" class="text-center text-body-secondary py-5">No challenges have been created yet.</td></tr> }
         @foreach (var challenge in Model.Challenges)
         {
-          var category = ChallengeCategoryCatalog.Get(challenge.CategoryKey);
+          var category = ChallengeCategoryCatalog.Resolve(challenge.CategoryKey, categories);
           <tr class="@(!challenge.IsVisible ? "challenge-row-hidden" : "")">
             <td><div class="fw-semibold">@challenge.Title</div><div class="small text-body-secondary mt-1"><code>@challenge.Slug</code></div></td>
             <td><span class="category-label"><span class="category-icon-sm"><i class="@category.IconClass" aria-hidden="true"></i></span><span>@category.Name</span></span></td>

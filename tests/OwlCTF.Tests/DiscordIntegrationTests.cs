@@ -1,3 +1,7 @@
+using System.Net;
+using System.Text.Json;
+using Microsoft.Extensions.Logging.Abstractions;
+using OwlCTF.Models;
 using OwlCTF.Services;
 
 namespace OwlCTF.Tests;
@@ -51,5 +55,68 @@ public sealed class DiscordIntegrationTests
         var now = new DateTime(2026, 8, 30, 12, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal(now.AddSeconds(expectedSeconds), FirstBloodPolicy.NextAttemptAtUtc(now, completedAttempts));
+    }
+
+    [Fact]
+    public async Task FirstBloodDeliveryUsesAPlainSingleLineMessageWithoutMentions()
+    {
+        var handler = new CapturingHandler(HttpStatusCode.NoContent);
+        var client = new FirstBloodDiscordClient(new SingleClientFactory(handler), NullLogger<FirstBloodDiscordClient>.Instance);
+        var announcement = new FirstBloodAnnouncement(Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(), Guid.NewGuid(),
+            new string('C', 150), new string('T', 100), new string('U', 120), 500, DateTime.UtcNow, 0);
+
+        var result = await client.SendAsync(ValidWebhook, announcement, TestContext.Current.CancellationToken);
+
+        Assert.True(result.Succeeded);
+        Assert.NotNull(handler.Body);
+        using var json = JsonDocument.Parse(handler.Body);
+        var content = json.RootElement.GetProperty("content").GetString()!;
+        Assert.DoesNotContain('\n', content);
+        Assert.Equal(80, content.Split(" claimed", StringSplitOptions.None)[0].Length);
+        Assert.Empty(json.RootElement.GetProperty("allowed_mentions").GetProperty("parse").EnumerateArray());
+    }
+
+    [Fact]
+    public async Task InvalidWebhookIsRejectedWithoutSendingARequest()
+    {
+        var handler = new CapturingHandler(HttpStatusCode.NoContent);
+        var client = new FirstBloodDiscordClient(new SingleClientFactory(handler), NullLogger<FirstBloodDiscordClient>.Instance);
+
+        var result = await client.SendTestAsync("https://example.com/hook", "OwlCTF", TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Contains("invalid", result.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Null(handler.Body);
+    }
+
+    [Fact]
+    public async Task DiscordHttpFailureReturnsAnActionableError()
+    {
+        var client = new FirstBloodDiscordClient(
+            new SingleClientFactory(new CapturingHandler(HttpStatusCode.BadGateway)),
+            NullLogger<FirstBloodDiscordClient>.Instance);
+
+        var result = await client.SendTestAsync(ValidWebhook, "OwlCTF", TestContext.Current.CancellationToken);
+
+        Assert.False(result.Succeeded);
+        Assert.Equal("Discord returned HTTP 502.", result.Error);
+    }
+
+    private const string ValidWebhook = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz";
+
+    private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private sealed class CapturingHandler(HttpStatusCode statusCode) : HttpMessageHandler
+    {
+        public string? Body { get; private set; }
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
+            return new HttpResponseMessage(statusCode);
+        }
     }
 }

@@ -32,7 +32,8 @@ public sealed record ChallengeFileRecord(Guid Id, Guid ChallengeId, string Origi
 public sealed record ChallengeSolveRecord(long Rank, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string SolverUsername, int PointsAwarded, DateTime SolvedAtUtc);
 public sealed record RecentSolveRecord(Guid Id, Guid ChallengeId, string ChallengeTitle, string CategoryKey, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string Username, int PointsAwarded, DateTime SolvedAtUtc);
 public sealed record FirstBloodAnnouncement(Guid Id, Guid ChallengeId, Guid SolveId, Guid TeamId, Guid UserId, string ChallengeTitle, string TeamName, string Username, int PointsAwarded, DateTime SolvedAtUtc, int AttemptCount);
-public sealed record ChallengeSecret(string FlagHash, int CurrentValue, bool IsVisible);
+public sealed record ChallengeSecret(string FlagHash, string? FlagRegex, int CurrentValue, bool IsVisible);
+public sealed record CustomChallengeCategoryRecord(string Key, string Name);
 public sealed record StandingRecord(long Rank, Guid TeamId, string TeamName, string? CountryCode, string BracketKey, decimal Score, long SolveCount, DateTime? LastSolveAtUtc);
 public sealed record ScorePoint(DateTime AtUtc, decimal Score);
 public sealed record TeamScoreSeries(Guid TeamId, string TeamName, string? CountryCode, IReadOnlyList<ScorePoint> Points);

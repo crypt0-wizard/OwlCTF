@@ -12,7 +12,7 @@ using OwlCTF.Options;
 
 namespace OwlCTF.Controllers;
 
-public sealed class ChallengesController(AppDb db, PlatformService platform, FlagHasher flags, FlagOwnershipService ownership, FileStorage storage, ScoreboardService scoreboard, IHubContext<ActivityHub> activity, IInstanceStore instanceStore, IOptions<DynamicInstanceOptions> instanceOptions) : Controller
+public sealed class ChallengesController(AppDb db, PlatformService platform, FlagHasher flags, RegexFlagMatcher regexFlags, FlagOwnershipService ownership, FileStorage storage, ScoreboardService scoreboard, IHubContext<ActivityHub> activity, IInstanceStore instanceStore, IOptions<DynamicInstanceOptions> instanceOptions) : Controller
 {
     public async Task<IActionResult> Index(string? sort, string? tag, CancellationToken ct)
     {
@@ -89,7 +89,9 @@ public sealed class ChallengesController(AppDb db, PlatformService platform, Fla
         var correct = ownershipResult.Disposition switch
         {
             FlagOwnershipDisposition.OwnedBySubmittingTeam => true,
-            FlagOwnershipDisposition.NotInstanceFlag => flags.Verify(input.Flag, challenge.FlagHash),
+            FlagOwnershipDisposition.NotInstanceFlag => challenge.FlagRegex is null
+                ? flags.Verify(input.Flag, challenge.FlagHash)
+                : regexFlags.Verify(input.Flag, challenge.FlagRegex),
             _ => false
         };
         var remoteIp = HttpContext.Connection.RemoteIpAddress;

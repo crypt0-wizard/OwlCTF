@@ -48,6 +48,22 @@ public sealed class BrandingAttributionTests
         Assert.True(File.Exists(Path.Combine(repositoryRoot, "TRADEMARKS.md")));
     }
 
+    [Fact]
+    public void PlatformManagementDoesNotOfferTheDefaultFaviconOverACustomUpload()
+    {
+        var repositoryRoot = FindRepositoryRoot();
+        var view = File.ReadAllText(Path.Combine(
+            repositoryRoot,
+            "src",
+            "OwlCTF.Web",
+            "Views",
+            "Admin",
+            "Index.cshtml"));
+
+        Assert.Contains("var hasCustomFavicon", view, StringComparison.Ordinal);
+        Assert.Contains("!hasCustomFavicon && Model.Settings.FaviconPath != BrandingStorage.DefaultFaviconPath", view, StringComparison.Ordinal);
+    }
+
     private static string FindRepositoryRoot()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
