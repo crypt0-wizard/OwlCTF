@@ -135,6 +135,16 @@ builder.Services.AddAuthentication(options =>
     options.SaveTokens = false;
     options.Events = new OAuthEvents
     {
+        OnRemoteFailure = context =>
+        {
+            var cancelled = string.Equals(
+                context.Request.Query["error"],
+                "access_denied",
+                StringComparison.OrdinalIgnoreCase);
+            context.HandleResponse();
+            context.Response.Redirect(cancelled ? "/auth/cancelled" : "/auth/discord-failed");
+            return Task.CompletedTask;
+        },
         OnCreatingTicket = async context =>
         {
             using var request = new HttpRequestMessage(HttpMethod.Get, context.Options.UserInformationEndpoint);

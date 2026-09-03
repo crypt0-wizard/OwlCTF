@@ -1,7 +1,12 @@
 using System.Net;
 using System.Text.Json;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.Extensions.Logging.Abstractions;
+using OwlCTF.Controllers;
 using OwlCTF.Models;
+using OwlCTF.Options;
 using OwlCTF.Services;
 
 namespace OwlCTF.Tests;
@@ -102,6 +107,45 @@ public sealed class DiscordIntegrationTests
         Assert.Equal("Discord returned HTTP 502.", result.Error);
     }
 
+    [Theory]
+    [InlineData(true, "Discord sign-in was cancelled. Nothing changed.")]
+    [InlineData(false, "Discord sign-in could not be completed. Please try again.")]
+    public void DiscordLoginFailureReturnsHomeWithFriendlyFeedback(bool cancelled, string expected)
+    {
+        var controller = CreateAuthController();
+
+        var result = Assert.IsType<RedirectToActionResult>(
+            cancelled ? controller.Cancelled() : controller.DiscordFailed());
+
+        Assert.Equal("Index", result.ActionName);
+        Assert.Equal("Home", result.ControllerName);
+        Assert.Equal(expected, controller.TempData["Error"]);
+    }
+
+    [Fact]
+    public void OAuthRemoteFailuresAreExplicitlyHandledInsteadOfReachingTheErrorPage()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) directory = directory.Parent;
+        Assert.NotNull(directory);
+        var program = File.ReadAllText(Path.Combine(directory!.FullName, "src", "OwlCTF.Web", "Program.cs"));
+
+        Assert.Contains("OnRemoteFailure", program, StringComparison.Ordinal);
+        Assert.Contains("context.HandleResponse()", program, StringComparison.Ordinal);
+        Assert.Contains("access_denied", program, StringComparison.Ordinal);
+        Assert.Contains("/auth/cancelled", program, StringComparison.Ordinal);
+    }
+
+    private static AuthController CreateAuthController()
+    {
+        var http = new DefaultHttpContext();
+        return new AuthController(Microsoft.Extensions.Options.Options.Create(new DiscordOptions()))
+        {
+            ControllerContext = new ControllerContext { HttpContext = http },
+            TempData = new TempDataDictionary(http, new MemoryTempDataProvider())
+        };
+    }
+
     private const string ValidWebhook = "https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyz";
 
     private sealed class SingleClientFactory(HttpMessageHandler handler) : IHttpClientFactory
@@ -118,5 +162,11 @@ public sealed class DiscordIntegrationTests
             Body = request.Content is null ? null : await request.Content.ReadAsStringAsync(cancellationToken);
             return new HttpResponseMessage(statusCode);
         }
+    }
+
+    private sealed class MemoryTempDataProvider : ITempDataProvider
+    {
+        public IDictionary<string, object> LoadTempData(HttpContext context) => new Dictionary<string, object>();
+        public void SaveTempData(HttpContext context, IDictionary<string, object> values) { }
     }
 }

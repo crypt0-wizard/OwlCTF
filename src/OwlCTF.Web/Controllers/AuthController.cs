@@ -19,6 +19,21 @@ public sealed class AuthController(IOptions<DiscordOptions> discord) : Controlle
         if (!Url.IsLocalUrl(returnUrl)) returnUrl = "/";
         return Challenge(new AuthenticationProperties { RedirectUri = returnUrl }, "Discord");
     }
+
+    [HttpGet("cancelled"), AllowAnonymous]
+    public IActionResult Cancelled()
+    {
+        TempData["Error"] = "Discord sign-in was cancelled. Nothing changed.";
+        return RedirectToAction("Index", "Home");
+    }
+
+    [HttpGet("discord-failed"), AllowAnonymous]
+    public IActionResult DiscordFailed()
+    {
+        TempData["Error"] = "Discord sign-in could not be completed. Please try again.";
+        return RedirectToAction("Index", "Home");
+    }
+
     [HttpPost("logout"), Authorize]
     public async Task<IActionResult> Logout()
     {
