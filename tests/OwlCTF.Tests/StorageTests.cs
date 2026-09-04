@@ -15,6 +15,50 @@ public sealed class BrandingStorageTests : IDisposable
 
     public BrandingStorageTests() => storage = new BrandingStorage(fixture.Environment);
 
+    private static byte[] Gif(int frames = 2, string version = "GIF89a")
+    {
+        var bytes = new List<byte>(System.Text.Encoding.ASCII.GetBytes(version));
+        bytes.AddRange([1, 0, 1, 0, 128, 0, 0, 0, 0, 0, 255, 255, 255]);
+        for (var i = 0; i < frames; i++)
+            bytes.AddRange([0x21, 0xf9, 4, 0, 5, 0, 0, 0, 0x2c, 0, 0, 0, 0, 1, 0, 1, 0, 0, 2, 2, 0x44, 1, 0]);
+        bytes.Add(0x3b);
+        return bytes.ToArray();
+    }
+
+    [Theory]
+    [InlineData("GIF87a")]
+    [InlineData("GIF89a")]
+    public async Task NavbarGifPreservesAllAnimationBytesAndUsesDetectedExtension(string version)
+    {
+        var bytes = Gif(version: version);
+        var path = await storage.SaveLogoAsync(TestUploads.File(bytes, "misleading.png"), TestContext.Current.CancellationToken);
+        Assert.EndsWith(".gif", path);
+        Assert.Equal(bytes, await File.ReadAllBytesAsync(fixture.PhysicalPath(path), TestContext.Current.CancellationToken));
+        storage.DeleteCustomAsset(path);
+        Assert.False(File.Exists(fixture.PhysicalPath(path)));
+    }
+
+    [Fact]
+    public async Task InvalidGifsAreRejectedAndLeaveNoPartialUploads()
+    {
+        var zeroWidth = Gif();
+        zeroWidth[6] = 0;
+        foreach (var bytes in new[] { "fake gif"u8.ToArray(), Gif()[..^2], Gif(0), Gif(301), zeroWidth, Gif().Concat(new byte[] { 1 }).ToArray() })
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                storage.SaveLogoAsync(TestUploads.File(bytes, "logo.gif"), TestContext.Current.CancellationToken));
+        var folder = Path.GetDirectoryName(fixture.PhysicalPath("/uploads/branding/test.gif"))!;
+        Assert.Empty(Directory.GetFiles(folder));
+    }
+
+    [Fact]
+    public async Task GifSizeLimitAndFaviconPolicyRemainUnchanged()
+    {
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.SaveLogoAsync(
+            TestUploads.File(new byte[BrandingStorage.MaxLogoBytes + 1], "large.gif"), TestContext.Current.CancellationToken));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => storage.SaveFaviconAsync(
+            TestUploads.File(Gif(), "favicon.gif"), TestContext.Current.CancellationToken));
+    }
+
     [Fact]
     public async Task NavbarLogoUsesAContentVerifiedExtension()
     {

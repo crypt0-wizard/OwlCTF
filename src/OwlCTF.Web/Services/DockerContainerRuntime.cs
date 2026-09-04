@@ -1,7 +1,7 @@
 using Docker.DotNet;
 using Docker.DotNet.Models;
-using OwlCTF.Options;
 using Microsoft.Extensions.Options;
+using OwlCTF.Options;
 
 namespace OwlCTF.Services;
 
@@ -21,12 +21,21 @@ public sealed class DockerContainerRuntime : IContainerRuntime, IDisposable
         var portKey = request.ContainerPort + "/tcp";
         var created = await client.Containers.CreateContainerAsync(new CreateContainerParameters
         {
-            Image = request.Image, Env = [request.FlagEnvironmentVariable + "=" + request.Flag],
+            Image = request.Image,
+            Env = [request.FlagEnvironmentVariable + "=" + request.Flag],
             ExposedPorts = new Dictionary<string, EmptyStruct> { [portKey] = default },
             Labels = new Dictionary<string, string> { ["owlctf.managed"] = "true", ["owlctf.instance"] = request.InstanceId.ToString("N"), ["owlctf.team"] = request.TeamId.ToString("N"), ["owlctf.challenge"] = request.ChallengeId.ToString("N") },
-            HostConfig = new HostConfig { NanoCPUs = request.NanoCpus, Memory = request.MemoryBytes, MemorySwap = request.MemoryBytes,
-                AutoRemove = false, CapDrop = ["ALL"], CapAdd = ["CHOWN", "SETUID", "SETGID", "NET_BIND_SERVICE"], SecurityOpt = ["no-new-privileges:true"],
-                PortBindings = new Dictionary<string, IList<PortBinding>> { [portKey] = [new PortBinding { HostPort = "" }] } }
+            HostConfig = new HostConfig
+            {
+                NanoCPUs = request.NanoCpus,
+                Memory = request.MemoryBytes,
+                MemorySwap = request.MemoryBytes,
+                AutoRemove = false,
+                CapDrop = ["ALL"],
+                CapAdd = ["CHOWN", "SETUID", "SETGID", "NET_BIND_SERVICE"],
+                SecurityOpt = ["no-new-privileges:true"],
+                PortBindings = new Dictionary<string, IList<PortBinding>> { [portKey] = [new PortBinding { HostPort = "" }] }
+            }
         }, ct);
         try
         {

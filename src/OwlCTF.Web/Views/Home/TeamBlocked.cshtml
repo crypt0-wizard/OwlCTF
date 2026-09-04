@@ -1,7 +1,8 @@
+@model TeamBlockedViewModel
 @inject OwlCTF.Services.PlatformService Platform
 @{
   Layout = "_ErrorLayout";
-  ViewData["Title"] = "Team benched";
+  ViewData["Title"] = Model.IsSuspended ? "Team suspended" : "Team benched";
   var site = await Platform.GetAsync(Context.RequestAborted);
   var errorLogoPath = site.NavbarLogoPath ?? BrandingStorage.DefaultLogoPath;
 }
@@ -9,9 +10,18 @@
   <div class="container">
     <section class="error-card" aria-labelledby="blockedTeamTitle">
       <img class="error-brand-mark" src="@errorLogoPath" alt="" aria-hidden="true" asp-append-version="true">
-      <div class="error-status">Flag-sharing foul</div>
-      <h1 id="blockedTeamTitle">Your team got benched</h1>
-      <p>That flag belonged to another team. Borrowing flags is not a team-building exercise, so your squad is sitting this round out while an administrator reviews what happened.</p>
+      @if (Model.IsSuspended)
+      {
+        <div class="error-status">Team timeout</div>
+        <h1 id="blockedTeamTitle">Your team is taking a timeout</h1>
+        <p>An administrator has suspended your team, so platform access is paused for now. Ask an event administrator if you need more details or think this was a mistake.</p>
+      }
+      else
+      {
+        <div class="error-status">Flag-sharing foul</div>
+        <h1 id="blockedTeamTitle">Your team got benched</h1>
+        <p>That flag belonged to another team. Borrowing flags is not a team-building exercise, so your squad is sitting this round out while an administrator reviews what happened.</p>
+      }
       <div class="error-actions">
         <form asp-controller="Auth" asp-action="Logout" method="post">
           <button class="btn btn-outline-secondary" type="submit">Sign out</button>

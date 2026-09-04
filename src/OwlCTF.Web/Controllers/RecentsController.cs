@@ -1,5 +1,5 @@
-using OwlCTF.Data;
 using Microsoft.AspNetCore.Mvc;
+using OwlCTF.Data;
 
 namespace OwlCTF.Controllers;
 

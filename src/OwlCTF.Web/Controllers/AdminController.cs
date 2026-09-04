@@ -1,24 +1,34 @@
-using OwlCTF.Data;
-using OwlCTF.Extensions;
-using OwlCTF.Models;
-using OwlCTF.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Validation;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using MySqlConnector;
+using OwlCTF.Data;
+using OwlCTF.Extensions;
+using OwlCTF.Models;
+using OwlCTF.Services;
 
 namespace OwlCTF.Controllers;
 
 [Authorize(Roles = "Admin"), Route("admin")]
-public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, RegexFlagMatcher regexFlags, ChallengeCategoryService challengeCategories, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord, IFlagOwnershipStore flagOwnership) : Controller
+public sealed class AdminController(AppDb db, PlatformService platform, FlagHasher flags, RegexFlagMatcher regexFlags, ChallengeCategoryService challengeCategories, FileStorage storage, ScoreboardService scoreboard, BrandingStorage branding, MarkdownService markdown, ContentImageStorage contentImages, SponsorLogoStorage sponsorLogos, IDbContextFactory<InstanceDbContext> instanceDbFactory, IFirstBloodDiscordClient firstBloodDiscord, IFlagOwnershipStore flagOwnership, IMemoryCache cache) : Controller
 {
     [HttpGet("")]
     public async Task<IActionResult> Index(CancellationToken ct)
     {
         var settings = await platform.GetAsync(ct);
         return View(new AdminDashboardViewModel(settings));
+    }
+
+    [HttpPost("login-settings"), ValidateAntiForgeryToken]
+    public async Task<IActionResult> SaveLoginSettings(bool? enabled, CancellationToken ct)
+    {
+        if (!ModelState.IsValid || enabled is null) return BadRequest("Choose whether login is enabled.");
+        await platform.UpdateLoginEnabledAsync(enabled.Value, ct);
+        TempData["Message"] = enabled.Value ? "Login enabled." : "Login paused. Existing sessions remain signed in.";
+        return RedirectToAction(nameof(Index));
     }
 
     [HttpGet("users")]
@@ -331,6 +341,7 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         return RedirectToAction(nameof(Index));
     }
 
+
     [HttpPost("branding/logo/default")]
     public async Task<IActionResult> UseDefaultNavbarLogo(CancellationToken ct)
     {
@@ -415,6 +426,12 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
             TempData["Error"] = "Team was not found or has already been disbanded.";
         else
         {
+            await using var instanceDb = await instanceDbFactory.CreateDbContextAsync(ct);
+            var memberIds = await instanceDb.TeamMemberships.AsNoTracking()
+                .Where(member => member.TeamId == id)
+                .Select(member => member.UserId)
+                .ToArrayAsync(ct);
+            foreach (var userId in memberIds) cache.Remove(TeamAccessGuardMiddleware.CacheKey(userId));
             scoreboard.Invalidate();
             TempData["Message"] = input.Suspended ? "Team suspended." : "Team restored.";
         }
@@ -475,11 +492,30 @@ public sealed class AdminController(AppDb db, PlatformService platform, FlagHash
         var secret = await db.GetChallengeSecretAsync(id, ct);
         await using var instanceDb = await instanceDbFactory.CreateDbContextAsync(ct);
         var config = await instanceDb.InstanceConfigs.AsNoTracking().SingleOrDefaultAsync(x => x.ChallengeId == id, ct);
-        var input = new ChallengeInput { Id = item.Id, Title = item.Title, Slug = item.Slug, Description = item.Description, Author = item.Author, CategoryKey = item.CategoryKey, Tags = string.Join(", ", item.TagList), Initial = item.Initial, Minimum = item.Minimum, Decay = item.Decay, IsVisible = item.IsVisible,
-            FlagMatchMode = secret?.FlagRegex is null ? "exact" : "regex", Flag = secret?.FlagRegex,
-            DynamicInstanceEnabled = config?.Enabled == true, DockerImage = config?.DockerImage, ContainerPort = config?.ContainerPort ?? 8080,
-            InstanceTtlSeconds = config?.TtlSeconds ?? 1800, MaxInstanceRenewals = config?.MaxRenewals ?? 3,
-            InstanceNanoCpus = config?.NanoCpus ?? 500_000_000, InstanceMemoryMb = config is null ? 256 : (int)(config.MemoryBytes / 1_048_576), FlagEnvironmentVariable = config?.FlagEnvironmentVariable ?? "FLAG" };
+        var input = new ChallengeInput
+        {
+            Id = item.Id,
+            Title = item.Title,
+            Slug = item.Slug,
+            Description = item.Description,
+            Author = item.Author,
+            CategoryKey = item.CategoryKey,
+            Tags = string.Join(", ", item.TagList),
+            Initial = item.Initial,
+            Minimum = item.Minimum,
+            Decay = item.Decay,
+            IsVisible = item.IsVisible,
+            FlagMatchMode = secret?.FlagRegex is null ? "exact" : "regex",
+            Flag = secret?.FlagRegex,
+            DynamicInstanceEnabled = config?.Enabled == true,
+            DockerImage = config?.DockerImage,
+            ContainerPort = config?.ContainerPort ?? 8080,
+            InstanceTtlSeconds = config?.TtlSeconds ?? 1800,
+            MaxInstanceRenewals = config?.MaxRenewals ?? 3,
+            InstanceNanoCpus = config?.NanoCpus ?? 500_000_000,
+            InstanceMemoryMb = config is null ? 256 : (int)(config.MemoryBytes / 1_048_576),
+            FlagEnvironmentVariable = config?.FlagEnvironmentVariable ?? "FLAG"
+        };
         await PrepareChallengeEditorAsync(input, ct);
         return View("ChallengeForm", input);
     }

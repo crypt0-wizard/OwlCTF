@@ -1,10 +1,10 @@
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using MySqlConnector;
 using OwlCTF.Data;
 using OwlCTF.Extensions;
 using OwlCTF.Models;
 using OwlCTF.Services;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using MySqlConnector;
 
 namespace OwlCTF.Controllers;
 

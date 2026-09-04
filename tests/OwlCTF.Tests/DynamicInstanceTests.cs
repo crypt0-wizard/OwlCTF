@@ -1,8 +1,8 @@
+using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Options;
 using OwlCTF.Data;
 using OwlCTF.Options;
 using OwlCTF.Services;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
 
 namespace OwlCTF.Tests;
 
@@ -104,7 +104,10 @@ public sealed class FlagOwnershipTests
     private sealed class FakeNotifier : ICheatIncidentNotifier { public bool Called { get; private set; } public bool Result { get; init; } = true; public Task<bool> NotifyAsync(CheatIncident incident, CancellationToken ct) { Called = true; return Task.FromResult(Result); } }
     private sealed class FakeOwnershipStore : IFlagOwnershipStore
     {
-        public IssuedFlagOwner? Owner { get; set; } public List<CheatIncident> Incidents { get; } = []; public Guid? BannedTeam { get; private set; } public bool AutoBanMarked { get; private set; } public bool IncidentMarkedNotified { get; private set; }
+        public IssuedFlagOwner? Owner { get; set; }
+        public List<CheatIncident> Incidents { get; } = []; public Guid? BannedTeam { get; private set; }
+        public bool AutoBanMarked { get; private set; }
+        public bool IncidentMarkedNotified { get; private set; }
         public Task<IssuedFlagOwner?> FindIssuedFlagAsync(string hash, CancellationToken ct) => Task.FromResult(Owner?.FlagHash == hash ? Owner : null);
         public Task AddIncidentAsync(CheatIncident incident, CancellationToken ct) { Incidents.Add(incident); return Task.CompletedTask; }
         public Task MarkIncidentNotifiedAsync(Guid id, CancellationToken ct) { IncidentMarkedNotified = true; return Task.CompletedTask; }
@@ -165,13 +168,15 @@ public sealed class InstanceExpiryProcessorTests
 
     private sealed class FakeExpiryStore(params ChallengeInstance[] instances) : IExpiredInstanceStore
     {
-        public Guid? Completed { get; private set; } public string? Failure { get; private set; }
+        public Guid? Completed { get; private set; }
+        public string? Failure { get; private set; }
         public Task<IReadOnlyList<ChallengeInstance>> ClaimExpiredAsync(DateTime now, int limit, CancellationToken ct) => Task.FromResult<IReadOnlyList<ChallengeInstance>>(instances);
         public Task CompleteExpiryAsync(Guid id, string? failure, CancellationToken ct) { Completed = id; Failure = failure; return Task.CompletedTask; }
     }
     private sealed class FakeRuntime : IContainerRuntime
     {
-        public string? Removed { get; private set; } public Exception? Failure { get; init; }
+        public string? Removed { get; private set; }
+        public Exception? Failure { get; init; }
         public Task<ContainerLaunchResult> StartAsync(ContainerLaunchRequest request, CancellationToken ct) => throw new NotSupportedException();
         public Task StopAndRemoveAsync(string containerId, CancellationToken ct) { Removed = containerId; return Failure is null ? Task.CompletedTask : Task.FromException(Failure); }
     }
@@ -281,8 +286,15 @@ public sealed class InstanceLifecycleTests
 
     private ChallengeInstance ActiveInstance() => new()
     {
-        Id = Guid.NewGuid(), TeamId = teamId, ChallengeId = challengeId, ContainerId = "owned-container", HostPort = 32001,
-        Status = ChallengeInstanceStatus.Active, ActiveLeaseKey = $"{teamId:N}:{challengeId:N}", CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1), ExpiresAtUtc = DateTime.UtcNow.AddMinutes(20)
+        Id = Guid.NewGuid(),
+        TeamId = teamId,
+        ChallengeId = challengeId,
+        ContainerId = "owned-container",
+        HostPort = 32001,
+        Status = ChallengeInstanceStatus.Active,
+        ActiveLeaseKey = $"{teamId:N}:{challengeId:N}",
+        CreatedAtUtc = DateTime.UtcNow.AddMinutes(-1),
+        ExpiresAtUtc = DateTime.UtcNow.AddMinutes(20)
     };
 
     private static InstanceLifecycleService CreateService(LifecycleStore store, LifecycleRuntime runtime, bool enabled = true)
@@ -295,7 +307,11 @@ public sealed class InstanceLifecycleTests
         var hasher = new FlagHasher(Microsoft.Extensions.Options.Options.Create(new SecurityOptions { FlagPepper = new string('p', 40) }));
         return new(store, runtime, hasher, platform, Microsoft.Extensions.Options.Options.Create(new DynamicInstanceOptions
         {
-            Enabled = enabled, PublicHost = "instances.example", GlobalConcurrencyLimit = 10, RenewalSeconds = 300, MaximumLifetimeSeconds = 3600
+            Enabled = enabled,
+            PublicHost = "instances.example",
+            GlobalConcurrencyLimit = 10,
+            RenewalSeconds = 300,
+            MaximumLifetimeSeconds = 3600
         }), TimeProvider.System);
     }
 
@@ -386,9 +402,12 @@ public sealed class InstancePanelTests
 
         Assert.Contains("StartsWithSegments(\"/team/blocked\")", middleware, StringComparison.Ordinal);
         Assert.Contains("Redirect(\"/team/blocked\")", middleware, StringComparison.Ordinal);
+        Assert.Contains("x.IsSuspended || x.IsBanned", middleware, StringComparison.Ordinal);
+        Assert.Contains("team_suspended", middleware, StringComparison.Ordinal);
 
         var page = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Views", "Home", "TeamBlocked.cshtml"));
         Assert.Contains("Your team got benched", page, StringComparison.Ordinal);
+        Assert.Contains("Your team is taking a timeout", page, StringComparison.Ordinal);
         Assert.Contains("asp-action=\"Logout\"", page, StringComparison.Ordinal);
     }
 

@@ -108,7 +108,10 @@
         }
         else
         {
-          <a asp-controller="Auth" asp-action="Login" class="btn btn-owlctf btn-sm"><i class="bi bi-discord me-1"></i>Login with Discord</a>
+          @if (site.LoginEnabled)
+          { <a asp-controller="Auth" asp-action="Login" class="btn btn-owlctf btn-sm"><i class="bi bi-discord me-1"></i>Login with Discord</a> }
+          else
+          { <a asp-controller="Auth" asp-action="LoginDisabled" class="text-body-secondary small">Login paused</a> }
         }
         <button id="themeToggle" type="button" aria-label="Switch to light theme" title="Switch to light theme"><i class="bi bi-sun-fill" id="themeIcon" aria-hidden="true"></i></button>
       </div>

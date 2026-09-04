@@ -4,6 +4,7 @@ using OwlCTF.Services;
 namespace OwlCTF.Models;
 
 public sealed record HomeViewModel(PlatformSettings Settings, CtfState State, string AboutHtml, string InstructionsHtml, string ContactHtml, IReadOnlyList<SponsorLogoRecord> SponsorLogos);
+public sealed record TeamBlockedViewModel(bool IsSuspended);
 public sealed record ChallengesViewModel(IReadOnlyList<ChallengeRecord> Challenges, TeamRecord? Team, CtfState State, string Sort, IReadOnlyList<string> AvailableTags, string? SelectedTag);
 public sealed record ChallengeInstancePanel(bool PlatformEnabled, bool ChallengeSolved, int MaxRenewals, int RenewalSeconds);
 public sealed record ChallengeDetailViewModel(ChallengeRecord Challenge, IReadOnlyList<ChallengeFileRecord> Files, IReadOnlyList<ChallengeSolveRecord> Solves, TeamRecord? Team, CtfState State, string FlagPrefix, ChallengeInstancePanel? Instance);

@@ -2,7 +2,10 @@ using OwlCTF.Services;
 
 namespace OwlCTF.Models;
 
-public sealed record PlatformSettings(string PlatformName, string AboutDescription, string ContactDescription, string SponsorsDescription, DateTime? StartsAtUtc, DateTime? EndsAtUtc, string? NavbarLogoPath = null, string? FaviconPath = BrandingStorage.DefaultFaviconPath, bool FirstBloodEnabled = false, string? FirstBloodWebhookUrl = null, string FlagPrefix = "CTF", int MaxTeamMembers = TeamCapacityPolicy.DefaultMaxMembers, string InstructionsDescription = "");
+public sealed record PlatformSettings(string PlatformName, string AboutDescription, string ContactDescription, string SponsorsDescription, DateTime? StartsAtUtc, DateTime? EndsAtUtc, string? NavbarLogoPath = null, string? FaviconPath = BrandingStorage.DefaultFaviconPath, bool FirstBloodEnabled = false, string? FirstBloodWebhookUrl = null, string FlagPrefix = "CTF", int MaxTeamMembers = TeamCapacityPolicy.DefaultMaxMembers, string InstructionsDescription = "")
+{
+    public bool LoginEnabled { get; init; } = true;
+}
 public sealed record UserRecord(Guid Id, string DiscordId, string Username, string? AvatarHash, bool IsAdmin);
 public sealed record AdminUserRecord(Guid Id, string Username, string DiscordId, bool IsAdmin, DateTime LastLoginAtUtc);
 public sealed record ProfileRecord(Guid Id, string DiscordId, string Username, string? AvatarHash, bool IsAdmin, DateTime CreatedAtUtc, DateTime LastLoginAtUtc, Guid? TeamId, string? TeamName, decimal Score, long SolveCount);
@@ -31,6 +34,11 @@ public sealed record SubmissionRecordResult(long AttemptId, bool Awarded);
 public sealed record ChallengeFileRecord(Guid Id, Guid ChallengeId, string OriginalName, string StorageName, long SizeBytes, string Sha256);
 public sealed record ChallengeSolveRecord(long Rank, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string SolverUsername, int PointsAwarded, DateTime SolvedAtUtc);
 public sealed record RecentSolveRecord(Guid Id, Guid ChallengeId, string ChallengeTitle, string CategoryKey, Guid TeamId, string TeamName, string? CountryCode, Guid UserId, string Username, int PointsAwarded, DateTime SolvedAtUtc);
+public sealed record PublicSolveFeedRecord(Guid Id, Guid ChallengeId, string ChallengeTitle, Guid TeamId, string TeamName, Guid UserId, string Username, int PointsAwarded, DateTime SolvedAtUtc, long SolveRank);
+public sealed record PublicTeamRestrictionRecord(Guid TeamId, string TeamName, string Kind, DateTime OccurredAtUtc)
+{
+    public IReadOnlyList<string> Members { get; init; } = [];
+}
 public sealed record FirstBloodAnnouncement(Guid Id, Guid ChallengeId, Guid SolveId, Guid TeamId, Guid UserId, string ChallengeTitle, string TeamName, string Username, int PointsAwarded, DateTime SolvedAtUtc, int AttemptCount);
 public sealed record ChallengeSecret(string FlagHash, string? FlagRegex, int CurrentValue, bool IsVisible);
 public sealed record CustomChallengeCategoryRecord(string Key, string Name);

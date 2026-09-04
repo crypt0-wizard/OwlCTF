@@ -118,3 +118,14 @@ docker compose ps
 Check `/health/ready` through the public domain and inspect bounded container logs with `docker compose logs --tail=200`.
 
 The web image also checks `http://127.0.0.1:8080/health/ready` from inside its own container. Production host filtering allows the configured public domain plus `localhost` `127.0.0.1` and the internal `web` service name so both this probe and Caddy requests pass host validation.
+# Pausing login
+
+In **Admin → Platform management → Login access**, disable Discord login to pause new sign-ins. Existing sessions remain active, including admin sessions. Sign-ins already at Discord are checked again before the platform accepts their callback.
+
+Keep an admin session open while login is paused. If every admin session expires, an operator with database access can restore login:
+
+```sql
+UPDATE PlatformSettings SET LoginEnabled=TRUE, UpdatedAtUtc=UTC_TIMESTAMP(6) WHERE Id=1;
+```
+
+The login check reads the database directly. Cached navigation labels can take up to 30 seconds to refresh after a manual database change. The normal database startup initializer adds the setting to existing installations with login enabled by default.

@@ -1,12 +1,14 @@
-using OwlCTF.Models;
-using OwlCTF.Services;
 using System.Diagnostics;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OwlCTF.Data;
+using OwlCTF.Extensions;
+using OwlCTF.Models;
+using OwlCTF.Services;
 
 namespace OwlCTF.Controllers;
 
-public sealed class HomeController(PlatformService platform, MarkdownService markdown, SponsorLogoStorage sponsorLogos) : Controller
+public sealed class HomeController(PlatformService platform, MarkdownService markdown, SponsorLogoStorage sponsorLogos, AppDb db) : Controller
 {
     public async Task<IActionResult> Index(CancellationToken ct)
     {
@@ -23,7 +25,11 @@ public sealed class HomeController(PlatformService platform, MarkdownService mar
     [Authorize]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     [Route("/team/blocked")]
-    public IActionResult TeamBlocked() => View();
+    public async Task<IActionResult> TeamBlocked(CancellationToken ct)
+    {
+        var team = await db.GetTeamForUserAsync(User.UserId(), ct);
+        return View(new TeamBlockedViewModel(team?.IsSuspended == true));
+    }
 
     [AllowAnonymous]
     [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]

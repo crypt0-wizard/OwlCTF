@@ -1,6 +1,6 @@
+using Microsoft.AspNetCore.Mvc;
 using OwlCTF.Data;
 using OwlCTF.Models;
-using Microsoft.AspNetCore.Mvc;
 
 namespace OwlCTF.Controllers;
 

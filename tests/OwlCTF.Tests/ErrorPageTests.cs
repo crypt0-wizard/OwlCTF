@@ -64,7 +64,7 @@ public sealed class ErrorPageTests
         Assert.Contains("IsAutoBannedValue", rootData, StringComparison.Ordinal);
     }
 
-    private static HomeController CreateController() => new(null!, null!, null!)
+    private static HomeController CreateController() => new(null!, null!, null!, null!)
     {
         ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() }
     };

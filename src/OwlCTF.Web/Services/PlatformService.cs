@@ -1,12 +1,20 @@
+using Microsoft.Extensions.Caching.Memory;
 using OwlCTF.Data;
 using OwlCTF.Models;
-using Microsoft.Extensions.Caching.Memory;
 
 namespace OwlCTF.Services;
 
 public sealed class PlatformService(AppDb db, IMemoryCache cache)
 {
     private const string CacheKey = "platform-settings";
+    // Login enforcement must not use cached settings on multi-process deployments.
+    public Task<bool> IsLoginEnabledAsync(CancellationToken ct) => db.IsLoginEnabledAsync(ct);
+
+    public async Task UpdateLoginEnabledAsync(bool enabled, CancellationToken ct)
+    {
+        await db.UpdateLoginEnabledAsync(enabled, ct);
+        cache.Remove(CacheKey);
+    }
     public async Task<PlatformSettings> GetAsync(CancellationToken ct) =>
         (await cache.GetOrCreateAsync(CacheKey, async entry =>
         {

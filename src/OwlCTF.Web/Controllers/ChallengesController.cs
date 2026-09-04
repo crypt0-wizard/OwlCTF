@@ -1,14 +1,14 @@
-using OwlCTF.Data;
-using OwlCTF.Extensions;
-using OwlCTF.Hubs;
-using OwlCTF.Models;
-using OwlCTF.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Options;
+using OwlCTF.Data;
+using OwlCTF.Extensions;
+using OwlCTF.Hubs;
+using OwlCTF.Models;
 using OwlCTF.Options;
+using OwlCTF.Services;
 
 namespace OwlCTF.Controllers;
 

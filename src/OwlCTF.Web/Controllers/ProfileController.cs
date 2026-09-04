@@ -1,7 +1,7 @@
-using OwlCTF.Data;
-using OwlCTF.Extensions;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using OwlCTF.Data;
+using OwlCTF.Extensions;
 
 namespace OwlCTF.Controllers;
 

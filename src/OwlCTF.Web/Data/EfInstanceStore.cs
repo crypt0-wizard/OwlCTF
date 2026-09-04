@@ -1,8 +1,8 @@
 using System.Data;
-using OwlCTF.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Memory;
+using OwlCTF.Services;
 
 namespace OwlCTF.Data;
 
@@ -33,8 +33,13 @@ public sealed class EfInstanceStore(IDbContextFactory<InstanceDbContext> factory
         var ttl = Math.Clamp(config.TtlSeconds, 5, 86_400);
         var instance = new ChallengeInstance
         {
-            Id = Guid.NewGuid(), TeamId = teamId, ChallengeId = challengeId, Status = ChallengeInstanceStatus.Provisioning,
-            ActiveLeaseKey = $"{teamId:N}:{challengeId:N}", CreatedAtUtc = now, ExpiresAtUtc = now.AddSeconds(ttl)
+            Id = Guid.NewGuid(),
+            TeamId = teamId,
+            ChallengeId = challengeId,
+            Status = ChallengeInstanceStatus.Provisioning,
+            ActiveLeaseKey = $"{teamId:N}:{challengeId:N}",
+            CreatedAtUtc = now,
+            ExpiresAtUtc = now.AddSeconds(ttl)
         };
         db.Instances.Add(instance);
         db.InstanceFlags.Add(new InstanceFlag { Id = Guid.NewGuid(), ChallengeInstanceId = instance.Id, TeamId = teamId, ChallengeId = challengeId, FlagHash = flagHash, IssuedAtUtc = now, ExpiresAtUtc = instance.ExpiresAtUtc });

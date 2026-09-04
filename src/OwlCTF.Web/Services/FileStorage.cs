@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
-using OwlCTF.Options;
 using Microsoft.Extensions.Options;
+using OwlCTF.Options;
 
 namespace OwlCTF.Services;
 

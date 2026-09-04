@@ -1,8 +1,8 @@
+using Microsoft.AspNetCore.Mvc;
 using OwlCTF.Data;
 using OwlCTF.Extensions;
-using OwlCTF.Services;
 using OwlCTF.Models;
-using Microsoft.AspNetCore.Mvc;
+using OwlCTF.Services;
 
 namespace OwlCTF.Controllers;
 
@@ -28,6 +28,23 @@ public sealed class ApiController(AppDb db, PlatformService platform, Scoreboard
 
     [HttpGet("standings")]
     public async Task<IActionResult> Standings(CancellationToken ct) => Ok(await scoreboard.GetAsync(ct));
+
+    [HttpGet("solves/recent")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> RecentSolves([FromQuery] int limit = 100, CancellationToken ct = default)
+    {
+        var settings = await platform.GetAsync(ct);
+        return Ok(new
+        {
+            settings.PlatformName,
+            solves = await db.GetPublicSolveFeedAsync(Math.Clamp(limit, 1, 250), ct)
+        });
+    }
+
+    [HttpGet("teams/restrictions")]
+    [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
+    public async Task<IActionResult> TeamRestrictions(CancellationToken ct) =>
+        Ok(new { teams = await db.GetPublicTeamRestrictionsAsync(ct) });
 
     [HttpGet("scoreboard")]
     [HttpGet("ctftime/standings")]

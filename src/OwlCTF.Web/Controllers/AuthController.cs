@@ -3,8 +3,9 @@ using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
-using OwlCTF.Options;
 using Microsoft.Extensions.Options;
+using OwlCTF.Options;
+using OwlCTF.Services;
 
 namespace OwlCTF.Controllers;
 
@@ -12,13 +13,18 @@ namespace OwlCTF.Controllers;
 public sealed class AuthController(IOptions<DiscordOptions> discord) : Controller
 {
     [HttpGet("login"), AllowAnonymous, EnableRateLimiting("login")]
-    public IActionResult Login(string? returnUrl = "/")
+    public async Task<IActionResult> Login([FromServices] PlatformService platform, string? returnUrl = "/")
     {
+        if (!await platform.IsLoginEnabledAsync(HttpContext.RequestAborted))
+            return RedirectToAction(nameof(LoginDisabled));
         if (string.IsNullOrWhiteSpace(discord.Value.ClientId) || string.IsNullOrWhiteSpace(discord.Value.ClientSecret))
             return StatusCode(StatusCodes.Status503ServiceUnavailable, "Discord login is not configured. Set Discord:ClientId and Discord:ClientSecret, then restart the application.");
         if (!Url.IsLocalUrl(returnUrl)) returnUrl = "/";
         return Challenge(new AuthenticationProperties { RedirectUri = returnUrl }, "Discord");
     }
+
+    [HttpGet("login-disabled"), AllowAnonymous]
+    public IActionResult LoginDisabled() => View();
 
     [HttpGet("cancelled"), AllowAnonymous]
     public IActionResult Cancelled()

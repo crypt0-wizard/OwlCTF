@@ -5,6 +5,59 @@ namespace OwlCTF.Tests;
 
 public sealed class ScoreboardApiTests
 {
+    private static StandingRecord[] FilterRows() =>
+    [
+        new(1, Guid.NewGuid(), "Owls & Co", null, "open", 500, 2, new DateTime(2026, 9, 1)),
+        new(2, Guid.NewGuid(), "College Owls", null, "college", 300, 3, new DateTime(2026, 9, 2)),
+        new(3, Guid.NewGuid(), "School Owls", null, "high-school", 300, 1, null)
+    ];
+
+    [Theory]
+    [InlineData("open", 1)]
+    [InlineData("college", 2)]
+    [InlineData("high-school", 3)]
+    public void BracketAndSearchCombineWithoutChangingOverallRank(string bracket, long rank)
+    {
+        var rows = FilterRows();
+        var result = ScoreboardRules.FilterStandings(rows, new(" OWLS ", bracket));
+        Assert.Equal(rank, Assert.Single(result).Rank);
+        Assert.Equal(3, rows.Length);
+    }
+
+    [Theory]
+    [InlineData("rank", "asc", "1,2,3")]
+    [InlineData("rank", "desc", "3,2,1")]
+    [InlineData("team", "asc", "2,1,3")]
+    [InlineData("team", "desc", "3,1,2")]
+    [InlineData("bracket", "asc", "2,3,1")]
+    [InlineData("bracket", "desc", "1,3,2")]
+    [InlineData("score", "asc", "2,3,1")]
+    [InlineData("score", "desc", "1,2,3")]
+    [InlineData("solves", "asc", "3,1,2")]
+    [InlineData("solves", "desc", "2,1,3")]
+    [InlineData("last-solve", "asc", "1,2,3")]
+    [InlineData("last-solve", "desc", "2,1,3")]
+    public void SortingIsStableAndMissingDatesStayLast(string sort, string direction, string expected)
+    {
+        var result = ScoreboardRules.FilterStandings(FilterRows(), new(sort: sort, direction: direction));
+        Assert.Equal(expected, string.Join(",", result.Select(row => row.Rank)));
+    }
+
+    [Fact]
+    public void FiltersHandleLiteralSearchEmptyResultsAndInvalidOptions()
+    {
+        Assert.Single(ScoreboardRules.FilterStandings(FilterRows(), new("& Co")));
+        Assert.Empty(ScoreboardRules.FilterStandings(FilterRows(), new("%")));
+        Assert.Empty(ScoreboardRules.FilterStandings([], new()));
+        var filter = new StandingsFilter(bracket: "invalid", sort: "invalid", direction: "invalid");
+        Assert.Equal("", filter.Bracket);
+        Assert.Equal("rank", filter.Sort);
+        Assert.Equal("asc", filter.Direction);
+        Assert.Equal(3, ScoreboardRules.FilterStandings(FilterRows(), filter).Count);
+        Assert.Equal(100, new StandingsFilter(new string('x', 101)).Search.Length);
+        Assert.Equal("college", new StandingsFilter(bracket: " COLLEGE ").Bracket);
+    }
+
     [Fact]
     public void CtftimeFeedMapsRankTeamScoreAndLastAccept()
     {
@@ -94,6 +147,35 @@ public sealed class ScoreboardApiTests
         const string exclusion = "WHERE adminMember.TeamId=t.Id AND adminUser.IsAdmin=TRUE";
 
         Assert.Equal(2, CountOccurrences(data, exclusion));
+    }
+
+    [Fact]
+    public void PublicSolveFeedRanksEligibleSolvesPerChallenge()
+    {
+        var root = FindRepositoryRoot();
+        var data = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
+        var api = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Controllers", "ApiController.cs"));
+
+        Assert.Contains("ROW_NUMBER() OVER (PARTITION BY s.ChallengeId", data, StringComparison.Ordinal);
+        Assert.Contains("t.IsBanned=FALSE AND t.IsHidden=FALSE AND t.IsSuspended=FALSE AND t.IsDisbanded=FALSE", data, StringComparison.Ordinal);
+        Assert.Contains("[HttpGet(\"solves/recent\")]", api, StringComparison.Ordinal);
+        Assert.Contains("settings.PlatformName", api, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void PublicTeamRestrictionFeedDistinguishesActionsWithoutExposingReasons()
+    {
+        var root = FindRepositoryRoot();
+        var api = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Controllers", "ApiController.cs"));
+        var data = File.ReadAllText(Path.Combine(root, "src", "OwlCTF.Web", "Data", "AppDb.cs"));
+
+        Assert.Contains("[HttpGet(\"teams/restrictions\")]", api, StringComparison.Ordinal);
+        Assert.Contains("GetPublicTeamRestrictionsAsync", api, StringComparison.Ordinal);
+        Assert.Contains("THEN 'auto-banned'", data, StringComparison.Ordinal);
+        Assert.Contains("WHEN t.IsBanned=TRUE THEN 'banned'", data, StringComparison.Ordinal);
+        Assert.Contains("ELSE 'suspended'", data, StringComparison.Ordinal);
+        Assert.DoesNotContain("SuspensionReason", api, StringComparison.Ordinal);
+        Assert.DoesNotContain("SecurityReason", api, StringComparison.Ordinal);
     }
 
     private static int CountOccurrences(string value, string expected)

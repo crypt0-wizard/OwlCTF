@@ -9,6 +9,40 @@ namespace OwlCTF.Tests;
 public sealed class PresentationTests
 {
     [Fact]
+    public void ChallengeMarkdownSupportsFormattingAndKeepsCodeLiteral()
+    {
+        var html = new MarkdownService().Render("## Goal\n\nFind **the flag** using *care*.\n\n- First step\n- Next step\n\n[Docs](https://example.com)\n\n```python\nprint('<script>alert(1)</script>')\n```\n\n| Item | Value |\n| --- | --- |\n| Port | 8080 |");
+        Assert.Contains("<h2", html);
+        Assert.Contains("<strong>the flag</strong>", html);
+        Assert.Contains("<em>care</em>", html);
+        Assert.Contains("<ul>", html);
+        Assert.Contains("<pre>", html);
+        Assert.Contains("<table>", html);
+        Assert.Contains("https://example.com", html);
+        Assert.DoesNotContain("<script>", html);
+        Assert.Contains("&lt;script&gt;", html);
+    }
+
+    [Fact]
+    public void DescriptionCopyRestrictionsAreScopedAndApplyToStaticChallenges()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) directory = directory.Parent;
+        Assert.NotNull(directory);
+        var web = Path.Combine(directory.FullName, "src", "OwlCTF.Web");
+        var view = File.ReadAllText(Path.Combine(web, "Views", "Challenges", "Detail.cshtml"));
+        var css = File.ReadAllText(Path.Combine(web, "wwwroot", "css", "site.css"));
+        Assert.Contains("id=\"challengeDescription\" class=\"challenge-description", view);
+        Assert.Contains("['copy', 'cut', 'contextmenu', 'dragstart']", view);
+        Assert.Contains("description.addEventListener(eventName, event => event.preventDefault())", view);
+        var handler = view.IndexOf("const description =", StringComparison.Ordinal);
+        var instanceScripts = view.IndexOf("@if (Model.Instance is not null)", handler, StringComparison.Ordinal);
+        Assert.True(instanceScripts > handler);
+        Assert.Contains("user-select: none", css);
+        Assert.DoesNotContain("document.addEventListener('copy'", view);
+    }
+
+    [Fact]
     public void MarkdownIsRenderedAndUnsafeHtmlIsRemoved()
     {
         var html = new MarkdownService().Render("## Hello\n\n**Bold** <script>alert(1)</script> [bad](javascript:alert(1))");

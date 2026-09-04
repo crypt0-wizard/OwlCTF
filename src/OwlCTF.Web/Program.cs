@@ -1,17 +1,17 @@
-using System.Security.Claims;
 using System.Net;
+using System.Security.Claims;
 using System.Text.Json;
 using System.Threading.RateLimiting;
-using OwlCTF.Data;
-using OwlCTF.Hubs;
-using OwlCTF.Options;
-using OwlCTF.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.OAuth;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using OwlCTF.Data;
+using OwlCTF.Hubs;
+using OwlCTF.Options;
+using OwlCTF.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 builder.Configuration
@@ -135,6 +135,12 @@ builder.Services.AddAuthentication(options =>
     options.SaveTokens = false;
     options.Events = new OAuthEvents
     {
+        OnRedirectToAuthorizationEndpoint = async context =>
+        {
+            var platform = context.HttpContext.RequestServices.GetRequiredService<PlatformService>();
+            context.Response.Redirect(await platform.IsLoginEnabledAsync(context.HttpContext.RequestAborted)
+                ? context.RedirectUri : "/auth/login-disabled");
+        },
         OnRemoteFailure = context =>
         {
             var cancelled = string.Equals(
@@ -161,6 +167,13 @@ builder.Services.AddAuthentication(options =>
         },
         OnTicketReceived = async context =>
         {
+            var platform = context.HttpContext.RequestServices.GetRequiredService<PlatformService>();
+            if (!await platform.IsLoginEnabledAsync(context.HttpContext.RequestAborted))
+            {
+                context.HandleResponse();
+                context.Response.Redirect("/auth/login-disabled");
+                return;
+            }
             var discordId = context.Principal?.FindFirstValue(ClaimTypes.NameIdentifier);
             var username = context.Principal?.FindFirstValue(ClaimTypes.Name);
             if (string.IsNullOrWhiteSpace(discordId) || string.IsNullOrWhiteSpace(username))

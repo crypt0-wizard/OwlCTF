@@ -1,9 +1,9 @@
 using System.Security.Cryptography;
 using System.Text;
 using Dapper;
+using MySqlConnector;
 using OwlCTF.Models;
 using OwlCTF.Services;
-using MySqlConnector;
 
 namespace OwlCTF.Data;
 
@@ -19,6 +19,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
           Id TINYINT NOT NULL PRIMARY KEY, PlatformName VARCHAR(80) NOT NULL, AboutDescription TEXT NOT NULL,
           ContactDescription TEXT NOT NULL DEFAULT '', SponsorsDescription TEXT NOT NULL DEFAULT '',
           InstructionsDescription TEXT NOT NULL DEFAULT '',
+          LoginEnabled BOOLEAN NOT NULL DEFAULT TRUE,
           StartsAtUtc DATETIME(6) NULL, EndsAtUtc DATETIME(6) NULL,
           NavbarLogoPath VARCHAR(255) NULL DEFAULT '/images/navbar-logo.png',
           FaviconPath VARCHAR(255) NULL DEFAULT '/images/favicon.png',
@@ -138,6 +139,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         ALTER TABLE PlatformSettings MODIFY COLUMN FirstBloodWebhookUrl TEXT NULL;
         ALTER TABLE PlatformSettings ADD COLUMN IF NOT EXISTS FlagPrefix VARCHAR(16) NOT NULL DEFAULT 'CTF';
         ALTER TABLE PlatformSettings ADD COLUMN IF NOT EXISTS MaxTeamMembers INT NOT NULL DEFAULT 5;
+        ALTER TABLE PlatformSettings ADD COLUMN IF NOT EXISTS LoginEnabled BOOLEAN NOT NULL DEFAULT TRUE;
         UPDATE PlatformSettings SET MaxTeamMembers=5 WHERE MaxTeamMembers < 1 OR MaxTeamMembers > 100;
         UPDATE PlatformSettings
         SET AboutDescription='Welcome to OwlCTF. Pick a challenge, follow your hunch and see what breaks.\n\nYou might meet web bugs, tricky ciphers, suspicious files, odd binaries and a few surprises.\n\nSign in with Discord, team up and start hunting flags.'
@@ -207,6 +209,7 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
     {
         await using var db = Open();
         var value = await db.QuerySingleAsync<PlatformSettings>(new CommandDefinition("SELECT PlatformName,AboutDescription,COALESCE(ContactDescription,'') ContactDescription,COALESCE(SponsorsDescription,'') SponsorsDescription,StartsAtUtc,EndsAtUtc,NavbarLogoPath,COALESCE(NULLIF(TRIM(FaviconPath),''),'/images/favicon.png') FaviconPath,FirstBloodEnabled,FirstBloodWebhookUrl,COALESCE(NULLIF(TRIM(FlagPrefix),''),'CTF') FlagPrefix,MaxTeamMembers,COALESCE(InstructionsDescription,'') InstructionsDescription FROM PlatformSettings WHERE Id=1", cancellationToken: ct));
+        value = value with { LoginEnabled = await db.ExecuteScalarAsync<bool>(new CommandDefinition("SELECT LoginEnabled FROM PlatformSettings WHERE Id=1", cancellationToken: ct)) };
         var webhookUrl = firstBloodWebhooks.Unprotect(value.FirstBloodWebhookUrl);
         if (webhookUrl is null && DiscordWebhookAddress.TryNormalize(value.FirstBloodWebhookUrl, out var legacyUrl)) webhookUrl = legacyUrl;
         return value with { StartsAtUtc = Utc(value.StartsAtUtc), EndsAtUtc = Utc(value.EndsAtUtc), FirstBloodWebhookUrl = webhookUrl };
@@ -601,6 +604,28 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
         return rows.Select(Utc).ToArray();
     }
 
+    public async Task<IReadOnlyList<PublicSolveFeedRecord>> GetPublicSolveFeedAsync(int limit, CancellationToken ct)
+    {
+        await using var db = Open();
+        var rows = await db.QueryAsync<PublicSolveFeedRecord>(new CommandDefinition("""
+            WITH EligibleSolves AS (
+              SELECT s.Id,s.ChallengeId,c.Title ChallengeTitle,s.TeamId,t.Name TeamName,
+                s.UserId,u.Username,s.ValueAwarded PointsAwarded,s.SolvedAtUtc,
+                CAST(ROW_NUMBER() OVER (PARTITION BY s.ChallengeId ORDER BY s.SolvedAtUtc,s.Id) AS SIGNED) SolveRank
+              FROM Solves s
+              JOIN Challenges c ON c.Id=s.ChallengeId AND c.IsVisible=TRUE
+              JOIN Teams t ON t.Id=s.TeamId
+              JOIN Users u ON u.Id=s.UserId
+              WHERE t.IsBanned=FALSE AND t.IsHidden=FALSE AND t.IsSuspended=FALSE AND t.IsDisbanded=FALSE
+            )
+            SELECT Id,ChallengeId,ChallengeTitle,TeamId,TeamName,UserId,Username,PointsAwarded,SolvedAtUtc,SolveRank
+            FROM EligibleSolves
+            ORDER BY SolvedAtUtc DESC,Id DESC
+            LIMIT @limit
+            """, new { limit = Math.Clamp(limit, 1, 250) }, cancellationToken: ct));
+        return rows.Select(row => row with { SolvedAtUtc = DateTime.SpecifyKind(row.SolvedAtUtc, DateTimeKind.Utc) }).ToArray();
+    }
+
     public async Task<RecentSolveRecord?> GetRecentSolveAsync(Guid challengeId, Guid teamId, CancellationToken ct)
     {
         await using var db = Open();
@@ -800,6 +825,54 @@ public sealed class AppDb(IConfiguration configuration, JoinCodeProtector joinCo
             """, cancellationToken: ct));
         return rows.AsList();
     }
+
+    public async Task<IReadOnlyList<PublicTeamRestrictionRecord>> GetPublicTeamRestrictionsAsync(CancellationToken ct)
+    {
+        await using var db = Open();
+        var rows = await db.QueryAsync<PublicTeamRestrictionRecord>(new CommandDefinition("""
+            SELECT t.Id TeamId,t.Name TeamName,
+              CASE
+                WHEN t.IsBanned=TRUE
+                  AND t.SecurityReason LIKE 'Automatic action for cross-team instance flag incident %'
+                  AND EXISTS(
+                    SELECT 1 FROM CheatIncidents incident
+                    WHERE incident.SubmittingTeamId=t.Id AND incident.AutoBanApplied=TRUE)
+                  THEN 'auto-banned'
+                WHEN t.IsBanned=TRUE THEN 'banned'
+                ELSE 'suspended'
+              END Kind,
+              COALESCE(t.BannedAtUtc,t.SuspendedAtUtc,t.CreatedAtUtc) OccurredAtUtc
+            FROM Teams t
+            WHERE t.IsDisbanded=FALSE AND (t.IsBanned=TRUE OR t.IsSuspended=TRUE)
+            ORDER BY OccurredAtUtc,t.Name
+            """, cancellationToken: ct));
+        var restrictions = rows.AsList();
+        if (restrictions.Count == 0) return restrictions;
+        var members = await db.QueryAsync<RestrictionMemberDbRow>(new CommandDefinition("""
+            SELECT tm.TeamId,u.Username
+            FROM TeamMembers tm
+            JOIN Users u ON u.Id=tm.UserId
+            JOIN Teams t ON t.Id=tm.TeamId
+            WHERE t.IsDisbanded=FALSE AND (t.IsBanned=TRUE OR t.IsSuspended=TRUE)
+            ORDER BY u.Username,u.Id
+            """, cancellationToken: ct));
+        var byTeam = members.ToLookup(member => member.TeamId, member => member.Username);
+        return restrictions.Select(team => team with { Members = byTeam[team.TeamId].ToArray() }).ToArray();
+    }
+
+    public async Task<bool> IsLoginEnabledAsync(CancellationToken ct)
+    {
+        await using var db = Open();
+        return await db.QuerySingleAsync<bool>(new CommandDefinition("SELECT LoginEnabled FROM PlatformSettings WHERE Id=1", cancellationToken: ct));
+    }
+
+    public async Task UpdateLoginEnabledAsync(bool enabled, CancellationToken ct)
+    {
+        await using var db = Open();
+        await db.ExecuteAsync(new CommandDefinition("UPDATE PlatformSettings SET LoginEnabled=@enabled,UpdatedAtUtc=UTC_TIMESTAMP(6) WHERE Id=1", new { enabled }, cancellationToken: ct));
+    }
+
+    private sealed record RestrictionMemberDbRow(Guid TeamId, string Username);
 
     public async Task<IReadOnlyList<TeamScoreSeries>> GetTopTeamScoreSeriesAsync(CancellationToken ct)
     {

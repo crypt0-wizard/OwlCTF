@@ -1,7 +1,7 @@
 using System.Net.Http.Json;
+using Microsoft.Extensions.Options;
 using OwlCTF.Data;
 using OwlCTF.Options;
-using Microsoft.Extensions.Options;
 
 namespace OwlCTF.Services;
 
@@ -35,8 +35,14 @@ public sealed class FlagOwnershipService(IFlagOwnershipStore store, FlagHasher h
             return false;
         var incident = new CheatIncident
         {
-            Id = Guid.NewGuid(), SubmissionAttemptId = submissionAttemptId, SubmittingTeamId = submittingTeamId, OwningTeamId = owningTeamId, SubmittingUserId = submittingUserId,
-            SubmittedChallengeId = submittedChallengeId, OwningChallengeId = owningChallengeId, OccurredAtUtc = clock.GetUtcNow().UtcDateTime,
+            Id = Guid.NewGuid(),
+            SubmissionAttemptId = submissionAttemptId,
+            SubmittingTeamId = submittingTeamId,
+            OwningTeamId = owningTeamId,
+            SubmittingUserId = submittingUserId,
+            SubmittedChallengeId = submittedChallengeId,
+            OwningChallengeId = owningChallengeId,
+            OccurredAtUtc = clock.GetUtcNow().UtcDateTime,
             Evidence = "Submitted flag hash " + result.FlagHash[..16] + "... matched instance " + challengeInstanceId.ToString("N") + " owned by team " + owningTeamId.ToString("N") + "."
         };
         await store.AddIncidentAsync(incident, ct);

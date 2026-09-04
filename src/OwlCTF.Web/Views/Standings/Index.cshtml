@@ -4,6 +4,8 @@
 @{
   ViewData["Title"] = "Standings";
   var cspNonce = Context.Items["CspNonce"] as string;
+  var filter = ViewData["StandingsFilter"] as StandingsFilter ?? new();
+  var totalTeams = ViewData["TotalTeams"] as int? ?? Model.Standings.Count;
   var chartSeries = Model.Series.Select(s => new
   {
     name = s.TeamName,
@@ -23,7 +25,7 @@
   @if (Model.State.Phase == CtfPhase.Unscheduled)
   {
     <div class="alert alert-secondary mt-3">
-      @if (Model.Standings.Count == 0)
+      @if (totalTeams == 0)
       { <span>No event is scheduled yet. Standings will appear once teams start competing.</span> }
       else
       { <span>No event is scheduled yet. Previous scores are shown below for reference.</span> }
@@ -33,7 +35,7 @@
   {
     <section id="scoreboardChart" class="scoreboard-chart-shell mt-4" aria-labelledby="scoreboardChartTitle">
       <div class="scoreboard-chart-toolbar">
-        <h2 id="scoreboardChartTitle" class="scoreboard-chart-title">Top 10 teams</h2>
+        <h2 id="scoreboardChartTitle" class="scoreboard-chart-title">Top 10 teams overall</h2>
         <div class="scoreboard-chart-actions">
           <button id="zoomInScoreChart" class="scoreboard-chart-action" type="button" aria-label="Zoom in on chart" title="Zoom in"><i class="bi bi-zoom-in" aria-hidden="true"></i></button>
           <button id="zoomOutScoreChart" class="scoreboard-chart-action" type="button" aria-label="Zoom out of chart" title="Zoom out"><i class="bi bi-zoom-out" aria-hidden="true"></i></button>
@@ -48,12 +50,45 @@
   }
   @if (Model.State.Phase != CtfPhase.Upcoming)
   {
+  <form method="get" asp-action="Index" class="row g-3 align-items-end my-3" role="search" aria-label="Filter standings">
+    <div class="col-12 col-lg-4">
+      <label for="standingsSearch" class="form-label">Team search</label>
+      <input id="standingsSearch" name="search" type="search" class="form-control" value="@filter.Search" maxlength="100" placeholder="Search by team name" />
+    </div>
+    <div class="col-12 col-sm-6 col-lg-2">
+      <label for="standingsBracket" class="form-label">Bracket</label>
+      <select id="standingsBracket" name="bracket" class="form-select">
+        <option value="">All brackets</option>
+        @foreach (var item in TeamBracketCatalog.All)
+        { <option value="@item.Key" selected="@(filter.Bracket == item.Key)">@item.Name</option> }
+      </select>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-2">
+      <label for="standingsSort" class="form-label">Sort by</label>
+      <select id="standingsSort" name="sort" class="form-select">
+        @foreach (var item in new[] { ("rank", "Rank"), ("team", "Team"), ("bracket", "Bracket"), ("score", "Score"), ("solves", "Solves"), ("last-solve", "Last solve") })
+        { <option value="@item.Item1" selected="@(filter.Sort == item.Item1)">@item.Item2</option> }
+      </select>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-2">
+      <label for="standingsDirection" class="form-label">Direction</label>
+      <select id="standingsDirection" name="direction" class="form-select">
+        <option value="asc" selected="@(!filter.Descending)">Ascending</option>
+        <option value="desc" selected="@(filter.Descending)">Descending</option>
+      </select>
+    </div>
+    <div class="col-12 col-sm-6 col-lg-2 d-flex gap-2 flex-wrap">
+      <button type="submit" class="btn btn-primary">Apply</button>
+      <a asp-action="Index" class="btn btn-outline-secondary">Reset</a>
+    </div>
+  </form>
+  <p class="text-muted small">Showing @Model.Standings.Count of @totalTeams teams. Ranks are overall positions.</p>
   <div class="panel @(Model.Series.Count == 0 ? "mt-4" : "")"><div class="table-responsive"><table class="table table-hover mb-0 align-middle">
     <thead><tr><th scope="col">Rank</th><th scope="col">Team</th><th scope="col">Bracket</th><th scope="col">Score</th><th scope="col">Solves</th><th scope="col">Last solve (local time)</th></tr></thead>
     <tbody>
     @if (Model.Standings.Count == 0)
     {
-      <tr><td colspan="6" class="text-center py-4">@(Model.State.Phase switch
+      <tr><td colspan="6" class="text-center py-4">@(totalTeams > 0 ? "No teams match your search or bracket. Try another filter." : Model.State.Phase switch
       {
         CtfPhase.Unscheduled => "Standings will appear after an event is scheduled.",
         CtfPhase.Ended => "No teams scored in this event.",

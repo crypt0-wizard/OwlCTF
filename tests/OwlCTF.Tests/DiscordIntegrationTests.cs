@@ -14,6 +14,48 @@ namespace OwlCTF.Tests;
 public sealed class DiscordIntegrationTests
 {
     [Fact]
+    public void LoginIsEnabledByDefaultAndPausedPageDoesNotRedirectBackToLogin()
+    {
+        var settings = new PlatformSettings("CTF", "", "", "", null, null);
+        Assert.True(settings.LoginEnabled);
+        Assert.False((settings with { LoginEnabled = false }).LoginEnabled);
+        Assert.IsType<ViewResult>(CreateAuthController().LoginDisabled());
+    }
+
+    [Fact]
+    public void LoginToggleRequiresAdminAndForgeryProtection()
+    {
+        var authorize = Assert.Single(typeof(AdminController)
+            .GetCustomAttributes(typeof(Microsoft.AspNetCore.Authorization.AuthorizeAttribute), true)
+            .Cast<Microsoft.AspNetCore.Authorization.AuthorizeAttribute>());
+        Assert.Equal("Admin", authorize.Roles);
+        var action = typeof(AdminController).GetMethod(nameof(AdminController.SaveLoginSettings))!;
+        Assert.NotEmpty(action.GetCustomAttributes(typeof(HttpPostAttribute), true));
+        Assert.NotEmpty(action.GetCustomAttributes(typeof(ValidateAntiForgeryTokenAttribute), true));
+    }
+
+    [Fact]
+    public void LoginGateCoversOAuthRedirectAndCallbackBeforeCreatingUsers()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+        while (directory is not null && !File.Exists(Path.Combine(directory.FullName, "OwlCTF.slnx"))) directory = directory.Parent;
+        Assert.NotNull(directory);
+        var root = Path.Combine(directory.FullName, "src", "OwlCTF.Web");
+        var program = File.ReadAllText(Path.Combine(root, "Program.cs"));
+        var redirect = program.Split("OnRedirectToAuthorizationEndpoint =")[1].Split("OnRemoteFailure =")[0];
+        Assert.Contains("IsLoginEnabledAsync", redirect);
+        Assert.Contains("/auth/login-disabled", redirect);
+        var callback = program.Split("OnTicketReceived =")[1].Split("UpsertDiscordUserAsync")[0];
+        Assert.Contains("IsLoginEnabledAsync", callback);
+        Assert.Contains("context.HandleResponse()", callback);
+        Assert.Contains("/auth/login-disabled", callback);
+        var auth = File.ReadAllText(Path.Combine(root, "Controllers", "AuthController.cs"));
+        Assert.True(auth.IndexOf("IsLoginEnabledAsync", StringComparison.Ordinal) < auth.IndexOf("return Challenge(", StringComparison.Ordinal));
+        var data = File.ReadAllText(Path.Combine(root, "Data", "AppDb.cs"));
+        Assert.Contains("ADD COLUMN IF NOT EXISTS LoginEnabled BOOLEAN NOT NULL DEFAULT TRUE", data);
+    }
+
+    [Fact]
     public void ValidDiscordIdentityUsesTheAvatarCdn()
     {
         var url = DiscordAvatar.Url("123456789012345678", "a_abcdef123456", 256);

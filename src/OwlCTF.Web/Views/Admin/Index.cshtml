@@ -11,6 +11,22 @@
 <main><div class="container">
   <h1 class="welcome-heading mb-1">Platform management</h1>
   <p class="text-body-secondary">Set the look of the site, edit public content and manage event tools.</p>
+  <div class="panel mt-4" id="login-settings">
+    <div class="panel-header">Login access</div>
+    <div class="panel-body">
+      <p>Pause new Discord sign-ins without signing anyone out. This also applies to admins. Keep your admin session open so you can enable login again.</p>
+      <form asp-action="SaveLoginSettings" method="post" class="admin-inline-setting">
+        <label for="loginEnabled" class="form-label">Discord login</label>
+        <div class="admin-inline-control">
+          <select id="loginEnabled" name="enabled" class="form-select">
+            <option value="true" selected="@Model.Settings.LoginEnabled">Enabled</option>
+            <option value="false" selected="@(!Model.Settings.LoginEnabled)">Disabled</option>
+          </select>
+          <button class="btn btn-owlctf" type="submit">Save login access</button>
+        </div>
+      </form>
+    </div>
+  </div>
   <div class="panel mt-4">
     <div class="panel-header">Navbar branding</div>
     <div class="panel-body">
@@ -47,8 +63,8 @@
         <div class="flex-grow-1">
           <form asp-action="UploadNavbarLogo" method="post" enctype="multipart/form-data">
             <label for="navbarLogo" class="form-label">Choose navbar logo</label>
-            <input id="navbarLogo" name="logo" class="form-control" type="file" accept="image/png,image/jpeg,image/webp" required>
-            <div class="form-text">Use a PNG, JPEG or WebP up to 2 MB. A wide transparent PNG works best.</div>
+            <input id="navbarLogo" name="logo" class="form-control" type="file" accept="image/png,image/gif,image/jpeg,image/webp" required>
+            <div class="form-text">Use a PNG, GIF, JPEG or WebP up to 2 MB. Animated GIFs are supported. Keep logos wide with a transparent background.</div>
             <div class="d-flex flex-wrap gap-2 mt-3">
               <button class="btn btn-owlctf btn-sm" type="submit">Upload logo</button>
               @if (!hasCustomNavbarLogo && Model.Settings.NavbarLogoPath != BrandingStorage.DefaultLogoPath)

@@ -46,7 +46,14 @@
 
         <section class="tab-pane fade" id="content-pane" role="tabpanel" aria-labelledby="content-tab" tabindex="0">
           <div class="challenge-tab-heading"><h2>Content and solution flag</h2><p>Give players what they need and set the static flag.</p></div>
-          <div><label asp-for="Description" class="form-label"></label><textarea asp-for="Description" class="form-control" rows="11" placeholder="Explain the goal and include connection details or useful hints."></textarea><span asp-validation-for="Description" class="text-danger"></span></div>
+          <div>
+            <label asp-for="Description" class="form-label"></label>
+            <textarea asp-for="Description" class="form-control" rows="11" aria-describedby="descriptionHelp" placeholder="Explain the goal and include connection details or useful hints."></textarea>
+            <span asp-validation-for="Description" class="text-danger"></span>
+            <div id="descriptionHelp" class="form-text">Supports Markdown: **bold**, *italic*, headings, lists, links, tables and fenced code blocks. Use a blank line between paragraphs. Raw HTML is disabled.</div>
+            <button id="previewDescription" type="button" class="btn btn-outline-secondary btn-sm mt-2" aria-controls="descriptionPreview">Preview description</button>
+            <div id="descriptionPreview" class="markdown-preview markdown-content mt-2" aria-live="polite" hidden></div>
+          </div>
           <div class="row g-3 mt-1">
             <div class="col-md-4"><label asp-for="FlagMatchMode" class="form-label"></label><select asp-for="FlagMatchMode" class="form-select"><option value="exact">Exact flag</option><option value="regex">Regular expression</option></select><span asp-validation-for="FlagMatchMode" class="text-danger"></span></div>
             <div class="col-md-8"><label asp-for="Flag" class="form-label" id="flagValueLabel">Flag</label><input asp-for="Flag" class="form-control font-monospace" autocomplete="new-password" placeholder="@(Model.Id is null ? "Required for static challenges" : "Leave blank to keep the current exact flag")"><span asp-validation-for="Flag" class="text-danger"></span><div class="form-text" id="flagMatchHelp">Exact flags are securely hashed. Docker challenges receive a unique per-team flag.</div></div>
@@ -105,6 +112,34 @@
 <script nonce="@cspNonce">
   document.addEventListener('DOMContentLoaded', () => {
     const form = document.getElementById('challengeEditorForm');
+    const previewButton = document.getElementById('previewDescription');
+    const description = document.getElementById('Description');
+    const preview = document.getElementById('descriptionPreview');
+    description.addEventListener('input', () => { preview.hidden = true; });
+    previewButton.addEventListener('click', async () => {
+      const source = description.value;
+      previewButton.disabled = true;
+      preview.hidden = false;
+      preview.textContent = 'Loading preview…';
+      try {
+        const token = form.querySelector('input[name="__RequestVerificationToken"]')?.value || '';
+        const response = await fetch('@Url.Action("PreviewMarkdown", "Admin")', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ markdownText: source, __RequestVerificationToken: token })
+        });
+        if (!response.ok) throw new Error();
+        const result = await response.json();
+        if (source === description.value) {
+          preview.innerHTML = result.html || '<p>Nothing to preview yet.</p>';
+          preview.hidden = false;
+        }
+      } catch {
+        preview.textContent = 'Preview is temporarily unavailable. Your description has not changed.';
+      } finally {
+        previewButton.disabled = false;
+      }
+    });
     const dockerToggle = document.getElementById('DynamicInstanceEnabled');
     const dockerSettings = document.getElementById('dockerSettings');
     const dockerModeStatus = document.getElementById('dockerModeStatus');

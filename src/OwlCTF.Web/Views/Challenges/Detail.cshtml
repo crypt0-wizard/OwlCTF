@@ -2,6 +2,7 @@
 @using OwlCTF.Services
 @using System.Text.Json
 @inject ChallengeCategoryService ChallengeCategories
+@inject MarkdownService Markdown
 @{
   ViewData["Title"] = Model.Challenge.Title;
   var cspNonce = Context.Items["CspNonce"] as string;
@@ -32,7 +33,7 @@
           </div>
         }
       </dl>
-      <div class="pre-line mb-4">@Model.Challenge.Description</div>
+      <div id="challengeDescription" class="challenge-description markdown-content mb-4">@Html.Raw(Markdown.Render(Model.Challenge.Description))</div>
       @if (Model.Files.Count > 0)
       {
         <h2 class="h5">Files</h2>
@@ -138,6 +139,14 @@
     }
   </div>
 </div></main>
+<script nonce="@cspNonce">
+  (() => {
+    const description = document.getElementById('challengeDescription');
+    for (const eventName of ['copy', 'cut', 'contextmenu', 'dragstart']) {
+      description.addEventListener(eventName, event => event.preventDefault());
+    }
+  })();
+</script>
 @if (Model.Instance is not null)
 {
   @section Scripts {

@@ -68,8 +68,10 @@ public sealed class TeamSecurityState
     public bool IsBanned { get; set; }
     public bool IsFlagged { get; set; }
     public bool IsHidden { get; set; }
+    public bool IsSuspended { get; set; }
     public bool IsDisbanded { get; set; }
     public string? SecurityReason { get; set; }
+    public string? SuspensionReason { get; set; }
     public DateTime? BannedAtUtc { get; set; }
     public DateTime? FlaggedAtUtc { get; set; }
 }
@@ -108,7 +110,7 @@ public sealed class InstanceDbContext(DbContextOptions<InstanceDbContext> option
         model.Entity<ChallengeInstance>(e => { e.ToTable("ChallengeInstances"); e.HasKey(x => x.Id); GuidColumns(e, nameof(ChallengeInstance.Id), nameof(ChallengeInstance.TeamId), nameof(ChallengeInstance.ChallengeId)); e.Property(x => x.ContainerId).HasMaxLength(128); e.Property(x => x.Status).HasConversion<string>().HasMaxLength(20); e.Property(x => x.ActiveLeaseKey).HasMaxLength(80); e.Property(x => x.FailureReason).HasMaxLength(1_000); e.HasIndex(x => x.ActiveLeaseKey).IsUnique(); e.HasIndex(x => new { x.Status, x.ExpiresAtUtc }); });
         model.Entity<InstanceFlag>(e => { e.ToTable("InstanceFlags"); e.HasKey(x => x.Id); GuidColumns(e, nameof(InstanceFlag.Id), nameof(InstanceFlag.ChallengeInstanceId), nameof(InstanceFlag.ChallengeId), nameof(InstanceFlag.TeamId)); e.Property(x => x.FlagHash).HasMaxLength(64); e.HasIndex(x => x.FlagHash).IsUnique(); });
         model.Entity<CheatIncident>(e => { e.ToTable("CheatIncidents"); e.HasKey(x => x.Id); GuidColumns(e, nameof(CheatIncident.Id), nameof(CheatIncident.SubmittingTeamId), nameof(CheatIncident.OwningTeamId), nameof(CheatIncident.SubmittingUserId), nameof(CheatIncident.SubmittedChallengeId), nameof(CheatIncident.OwningChallengeId)); e.Property(x => x.ManualBanByUserId).HasColumnType("char(36)"); e.Property(x => x.Evidence).HasMaxLength(2_000); e.HasIndex(x => x.OccurredAtUtc); e.HasIndex(x => x.SubmissionAttemptId).IsUnique(); });
-        model.Entity<TeamSecurityState>(e => { e.ToTable("Teams", t => t.ExcludeFromMigrations()); e.HasKey(x => x.Id); e.Property(x => x.Id).HasColumnType("char(36)"); e.Property(x => x.SecurityReason).HasMaxLength(500); });
+        model.Entity<TeamSecurityState>(e => { e.ToTable("Teams", t => t.ExcludeFromMigrations()); e.HasKey(x => x.Id); e.Property(x => x.Id).HasColumnType("char(36)"); e.Property(x => x.SecurityReason).HasMaxLength(500); e.Property(x => x.SuspensionReason).HasMaxLength(500); });
         model.Entity<TeamMembership>(e => { e.ToTable("TeamMembers", t => t.ExcludeFromMigrations()); e.HasKey(x => x.UserId); GuidColumns(e, nameof(TeamMembership.UserId), nameof(TeamMembership.TeamId)); });
         model.Entity<TeamChallengeSolve>(e => { e.ToTable("Solves", t => t.ExcludeFromMigrations()); e.HasKey(x => new { x.ChallengeId, x.TeamId }); GuidColumns(e, nameof(TeamChallengeSolve.ChallengeId), nameof(TeamChallengeSolve.TeamId)); });
         model.Entity<InstanceCapacityLock>(e => { e.ToTable("InstanceCapacityLocks"); e.HasKey(x => x.Id); });
